@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+.expo/
+*.log
+
+# IDEs and OS
+.DS_Store
+.vscode/
+.idea/
+
+# Database / Certs
+*.pem
+*.crt
