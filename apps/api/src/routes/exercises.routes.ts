@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/requireAuth';
+import { authenticateToken } from '../middleware/auth.middleware';
 import * as exerciseController from '../controllers/exercises.controller';
 
 const router = Router();
 
 // Apply auth middleware to all exercise routes
-router.use(requireAuth);
+router.use(authenticateToken);
 
 router.get('/', exerciseController.getAllExercises);
 router.post('/', exerciseController.createExercise);

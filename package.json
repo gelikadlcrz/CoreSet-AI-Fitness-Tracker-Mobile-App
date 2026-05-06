@@ -5,5 +5,12 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint"
+  },
+  "dependencies": {
+    "@nozbe/watermelondb": "^0.28.0",
+    "@nozbe/with-observables": "^1.6.0"
+  },
+  "devDependencies": {
+    "@babel/plugin-proposal-decorators": "^7.29.0"
   }
 }

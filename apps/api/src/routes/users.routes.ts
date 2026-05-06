@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/requireAuth';
 import * as userController from '../controllers/users.controller';
+import { authenticateToken } from '../middleware/auth.middleware'; // Import it!
 
 const router = Router();
 
@@ -8,8 +8,8 @@ const router = Router();
 router.post('/register', userController.register);
 router.post('/login', userController.login);
 
-// Protected routes
-router.get('/profile', requireAuth, userController.getProfile);
-router.put('/profile', requireAuth, userController.updateProfile);
+// Private route
+router.get('/profile', authenticateToken, userController.getProfile);
+router.put('/profile', authenticateToken, userController.updateProfile);
 
 export default router;

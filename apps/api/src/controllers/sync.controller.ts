@@ -1,18 +1,26 @@
 import { Request, Response, NextFunction } from 'express';
+import * as syncService from '../services/sync.service';
 
-export const pushChanges = async (req: Request, res: Response, next: NextFunction) => {
+export const pull = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Process incoming WatermelonDB sync payload
-    res.status(200).json({ message: 'Local mobile data synced to server (Controller Stub)' });
+    const userId = (req as any).user.id;
+    // WatermelonDB passes lastPulledAt as a query parameter
+    const lastPulledAt = parseInt(req.query.lastPulledAt as string) || 0;
+    
+    const pullData = await syncService.pullChanges(userId, lastPulledAt);
+    res.status(200).json(pullData);
   } catch (error) {
     next(error);
   }
 };
 
-export const pullChanges = async (req: Request, res: Response, next: NextFunction) => {
+export const push = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Fetch new changes from PostgreSQL since the provided timestamp
-    res.status(200).json({ message: 'Server data sent to mobile app (Controller Stub)' });
+    const userId = (req as any).user.id;
+    const { changes, lastPulledAt } = req.body;
+
+    await syncService.pushChanges(userId, changes, lastPulledAt);
+    res.status(200).send('Sync push successful');
   } catch (error) {
     next(error);
   }

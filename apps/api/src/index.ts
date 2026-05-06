@@ -8,6 +8,9 @@ import { testDbConnection } from './config/db';
 import userRoutes from './routes/users.routes';
 import exerciseRoutes from './routes/exercises.routes';
 import syncRoutes from './routes/sync.routes';
+import sessionRoutes from './routes/sessions.routes';
+import bodyMetricsRoutes from './routes/bodyMetrics.routes';
+import routinesRoutes from './routes/routines.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -20,6 +23,9 @@ app.use(requestLogger);
 app.use('/api/users', userRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/sync', syncRoutes);
+app.use('/api/sessions', sessionRoutes);
+app.use('/api/metrics', bodyMetricsRoutes);
+app.use('/api/routines', routinesRoutes);
 
 // Error Handling
 app.use(errorHandler);
