@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "CoreSet",
+    "slug": "your-app-slug",
+    "plugins": [
+      "@morrowdigital/watermelondb-expo-plugin"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.ios.coresetai"
+    }
+  }
+}
