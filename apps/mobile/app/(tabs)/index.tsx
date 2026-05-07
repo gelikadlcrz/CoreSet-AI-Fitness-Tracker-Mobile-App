@@ -1,98 +1,255 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ImageBackground,
+  TouchableOpacity,
+} from "react-native";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
-
-export default function HomeScreen() {
+export default function CaptureScreen() {
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <ImageBackground
+      source={{
+        uri: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1200&auto=format&fit=crop",
+      }}
+      style={styles.container}
+    >
+      {/* Dark Overlay */}
+      <View style={styles.overlay} />
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      {/* Duration */}
+      <View style={styles.durationContainer}>
+        <Text style={styles.durationLabel}>DURATION</Text>
+        <Text style={styles.durationText}>1:00</Text>
+      </View>
+
+      {/* Exercise Card */}
+      <View style={styles.exerciseCard}>
+        <Text style={styles.cardLabel}>Exercise</Text>
+
+        <Text style={styles.exerciseName}>
+          Bench{"\n"}Press
+        </Text>
+
+        <View style={styles.metricContainer}>
+          <Text style={styles.cardLabel}>Reps</Text>
+          <Text style={styles.metricValue}>1/20</Text>
+        </View>
+
+        <View style={styles.metricContainer}>
+          <Text style={styles.cardLabel}>Set</Text>
+          <Text style={styles.metricValue}>1/4</Text>
+        </View>
+      </View>
+
+      {/* Left Controls */}
+      <View style={styles.leftControls}>
+        <TouchableOpacity style={styles.controlButton}>
+          <View style={styles.stopSquare} />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.controlButton}>
+          <Text style={styles.rotateText}>↻</Text>
+        </TouchableOpacity>
+
+        {/* Confidence Meter */}
+        <View style={styles.confidenceContainer}>
+          <View style={styles.confidenceFill} />
+          <View style={styles.confidenceMarker} />
+        </View>
+      </View>
+
+      {/* Fake Skeleton */}
+      <View style={styles.skeletonContainer}>
+        <View style={[styles.joint, { top: 120, left: 160 }]} />
+        <View style={[styles.joint, { top: 180, left: 200 }]} />
+        <View style={[styles.joint, { top: 260, left: 250 }]} />
+        <View style={[styles.joint, { top: 350, left: 290 }]} />
+
+        <View style={[styles.line, {
+          top: 150,
+          left: 175,
+          width: 60,
+          transform: [{ rotate: "35deg" }],
+        }]} />
+
+        <View style={[styles.line, {
+          top: 225,
+          left: 220,
+          width: 70,
+          transform: [{ rotate: "55deg" }],
+        }]} />
+      </View>
+
+      {/* Bottom Rep Counter */}
+      <View style={styles.repCounter}>
+        <Text style={styles.repLabel}>LIVE REP COUNT</Text>
+        <Text style={styles.repValue}>+1</Text>
+      </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.25)",
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
+
+  durationContainer: {
+    position: "absolute",
+    top: 50,
+    alignSelf: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+
+  durationLabel: {
+    color: "#ccc",
+    fontSize: 10,
+    textAlign: "center",
+  },
+
+  durationText: {
+    color: "white",
+    fontSize: 32,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+
+  exerciseCard: {
+    position: "absolute",
+    top: 140,
+    right: 20,
+    width: 120,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 24,
+    padding: 16,
+  },
+
+  cardLabel: {
+    color: "#aaa",
+    fontSize: 12,
+  },
+
+  exerciseName: {
+    color: "white",
+    fontSize: 24,
+    fontWeight: "bold",
+    marginTop: 4,
+    marginBottom: 20,
+  },
+
+  metricContainer: {
+    marginBottom: 16,
+  },
+
+  metricValue: {
+    color: "white",
+    fontSize: 28,
+    fontWeight: "bold",
+  },
+
+  leftControls: {
+    position: "absolute",
+    left: 16,
+    top: "35%",
+    alignItems: "center",
+    gap: 20,
+  },
+
+  controlButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  stopSquare: {
+    width: 16,
+    height: 16,
+    backgroundColor: "white",
+  },
+
+  rotateText: {
+    color: "white",
+    fontSize: 24,
+  },
+
+  confidenceContainer: {
+    width: 50,
+    height: 220,
+    borderRadius: 25,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    overflow: "hidden",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 12,
+  },
+
+  confidenceFill: {
+    width: "100%",
+    height: 150,
+    backgroundColor: "#52ff52",
+    position: "absolute",
     bottom: 0,
-    left: 0,
-    position: 'absolute',
+  },
+
+  confidenceMarker: {
+    width: 30,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "yellow",
+    marginBottom: 10,
+  },
+
+  skeletonContainer: {
+    flex: 1,
+  },
+
+  joint: {
+    position: "absolute",
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#7CFF00",
+  },
+
+  line: {
+    position: "absolute",
+    height: 6,
+    backgroundColor: "#7CFF00",
+    borderRadius: 3,
+  },
+
+  repCounter: {
+    position: "absolute",
+    bottom: 60,
+    alignSelf: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 40,
+    paddingVertical: 20,
+    borderRadius: 30,
+  },
+
+  repLabel: {
+    color: "#ccc",
+    fontSize: 12,
+    textAlign: "center",
+  },
+
+  repValue: {
+    color: "#7CFF00",
+    fontSize: 54,
+    fontWeight: "bold",
+    textAlign: "center",
   },
 });
