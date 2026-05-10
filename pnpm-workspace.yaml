@@ -3,5 +3,4 @@ packages:
   - 'packages/*'
 allowBuilds:
   bcrypt: false
-patchedDependencies:
-  expo-dev-menu@5.0.23: patches/expo-dev-menu@5.0.23.patch
+  unrs-resolver: true
