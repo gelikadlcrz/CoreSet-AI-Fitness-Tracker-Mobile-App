@@ -10,7 +10,6 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "extra": {
-      "apiUrl": "http://192.168.0.101:3001"
     },
     "ios": {
       "supportsTablet": true,

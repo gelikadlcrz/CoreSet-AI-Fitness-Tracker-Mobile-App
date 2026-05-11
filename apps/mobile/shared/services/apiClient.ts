@@ -12,8 +12,6 @@ const getBaseUrl = () => {
   return 'http://localhost:3001';
 };
 
-const BASE_URL = getBaseUrl();
-
 let _token: string | null = null;
 
 export const setAuthToken = (token: string | null) => {
@@ -33,6 +31,9 @@ async function request<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
+  const BASE_URL = getBaseUrl(); // evaluated at call time, not module load
+  console.log('BASE_URL resolved to:', BASE_URL);
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -46,6 +47,7 @@ async function request<T>(
       url: `${BASE_URL}${path}`,
       headers,
       data: body,
+      timeout: 15000,
     });
 
     console.log('API RESPONSE:', response.data);
