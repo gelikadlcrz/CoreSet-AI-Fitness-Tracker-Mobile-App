@@ -1,9 +1,18 @@
 import Constants from 'expo-constants';
 import axios from 'axios';
 
-const BASE_URL =
-  (Constants.expoConfig?.extra?.apiUrl as string) ??
-  'http://192.168.0.101:3001';
+const getBaseUrl = () => {
+  if (Constants.expoConfig?.extra?.apiUrl) {
+    return Constants.expoConfig.extra.apiUrl as string;
+  }
+  const debuggerHost = Constants.expoConfig?.hostUri?.split(':')[0];
+  if (debuggerHost) {
+    return `http://${debuggerHost}:3001`;
+  }
+  return 'http://localhost:3001';
+};
+
+const BASE_URL = getBaseUrl();
 
 let _token: string | null = null;
 
@@ -30,11 +39,7 @@ async function request<T>(
   if (_token) headers['Authorization'] = `Bearer ${_token}`;
 
   try {
-    console.log('API REQUEST:', {
-      method,
-      url: `${BASE_URL}${path}`,
-      body,
-    });
+    console.log('API REQUEST:', { method, url: `${BASE_URL}${path}`, body });
 
     const response = await axios({
       method: method.toLowerCase() as any,
@@ -44,15 +49,11 @@ async function request<T>(
     });
 
     console.log('API RESPONSE:', response.data);
-
     return response.data as T;
   } catch (error: any) {
     console.log('API ERROR FULL:', error);
-
     console.log('API ERROR MESSAGE:', error?.message);
-
     console.log('API ERROR RESPONSE:', error?.response?.data);
-
     throw error;
   }
 }

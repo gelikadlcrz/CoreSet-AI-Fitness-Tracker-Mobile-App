@@ -1,3 +1,4 @@
+import '../gesture-patch';
 import { Stack } from 'expo-router';
 
 export default function RootLayout() {
