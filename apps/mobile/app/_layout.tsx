@@ -3,19 +3,21 @@ import { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { Stack } from 'expo-router';
 import { syncDatabase } from '@/backend/sync/syncService';
+import { restoreAuthToken } from '@/shared/services/apiClient';
 
 export default function RootLayout() {
   const appState = useRef(AppState.currentState);
 
   useEffect(() => {
+    // Restore token from secure storage on app launch
+    restoreAuthToken().catch(() => {});
+
     const subscription = AppState.addEventListener('change', async (nextState: AppStateStatus) => {
       if (appState.current.match(/inactive|background/) && nextState === 'active') {
-        console.log('[AppState] App came to foreground — syncing...');
         try {
           await syncDatabase();
-          console.log('[AppState] Background sync complete');
         } catch (e: any) {
-          console.log('[AppState] Background sync failed:', e.message);
+          // Sync failure is non-fatal — app continues normally
         }
       }
       appState.current = nextState;

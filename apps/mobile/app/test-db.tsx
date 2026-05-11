@@ -23,7 +23,7 @@ export default function TestDbScreen() {
     try {
       setResult('Logging in...');
       const res = await authApi.login('test@coreset.com', 'test1234');
-      setAuthToken(res.token);
+      await setAuthToken(res.token); // ← await added
       setResult(`✅ Logged in as ${res.user.email}`);
     } catch (e: any) {
       setResult(`❌ Login failed: ${e.message}`);

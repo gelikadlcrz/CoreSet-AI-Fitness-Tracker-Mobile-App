@@ -1,5 +1,8 @@
 import Constants from 'expo-constants';
 import axios from 'axios';
+import * as SecureStore from 'expo-secure-store';
+
+const TOKEN_KEY = 'coreset_auth_token';
 
 const getBaseUrl = () => {
   if (Constants.expoConfig?.extra?.apiUrl) {
@@ -20,14 +23,21 @@ const getBaseUrl = () => {
 
 let _token: string | null = null;
 
-export const setAuthToken = (token: string | null) => {
+export const setAuthToken = async (token: string | null) => {
   _token = token;
+  if (token) {
+    await SecureStore.setItemAsync(TOKEN_KEY, token);
+  } else {
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  }
 };
 
 export const getAuthToken = () => _token;
 
 export const restoreAuthToken = async (): Promise<string | null> => {
-  return _token;
+  const stored = await SecureStore.getItemAsync(TOKEN_KEY);
+  if (stored) _token = stored;
+  return stored;
 };
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
