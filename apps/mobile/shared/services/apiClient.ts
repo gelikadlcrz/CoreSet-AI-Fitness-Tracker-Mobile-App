@@ -2,13 +2,34 @@ import Constants from 'expo-constants';
 import axios from 'axios';
 
 const getBaseUrl = () => {
+  // 1. Explicit override (from app.json extra.apiUrl)
   if (Constants.expoConfig?.extra?.apiUrl) {
+    console.log('[BASE_URL] from extra.apiUrl');
     return Constants.expoConfig.extra.apiUrl as string;
   }
-  const debuggerHost = Constants.expoConfig?.hostUri?.split(':')[0];
-  if (debuggerHost) {
-    return `http://${debuggerHost}:3001`;
+
+  // 2. Expo SDK 49+ (hostUri)
+  const hostUri = Constants.expoConfig?.hostUri?.split(':')[0];
+  if (hostUri) {
+    console.log('[BASE_URL] from hostUri:', hostUri);
+    return `http://${hostUri}:3001`;
   }
+
+  // 3. Older Expo fallbacks
+  const manifest2Host = (Constants as any).manifest2?.debuggerHost?.split(':')[0];
+  if (manifest2Host) {
+    console.log('[BASE_URL] from manifest2:', manifest2Host);
+    return `http://${manifest2Host}:3001`;
+  }
+
+  const manifestHost = (Constants as any).manifest?.debuggerHost?.split(':')[0];
+  if (manifestHost) {
+    console.log('[BASE_URL] from manifest:', manifestHost);
+    return `http://${manifestHost}:3001`;
+  }
+
+  // 4. Last resort
+  console.log('[BASE_URL] fallback to localhost');
   return 'http://localhost:3001';
 };
 
@@ -32,7 +53,6 @@ async function request<T>(
   body?: unknown,
 ): Promise<T> {
   const BASE_URL = getBaseUrl(); // evaluated at call time, not module load
-  console.log('BASE_URL resolved to:', BASE_URL);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
