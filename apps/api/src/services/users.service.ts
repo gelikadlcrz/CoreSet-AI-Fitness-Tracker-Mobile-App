@@ -2,8 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import * as userRepo from '../repositories/users.repo';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_please_change_in_production';
+import { JWT_SECRET, JWT_EXPIRES_IN } from '../config/auth';
 
 export const registerUser = async (email: string, passwordPlain: string, displayName: string) => {
   const existingUser = await userRepo.findUserByEmail(email);
@@ -11,7 +10,7 @@ export const registerUser = async (email: string, passwordPlain: string, display
 
   const saltRounds = 10;
   const passwordHash = await bcrypt.hash(passwordPlain, saltRounds);
-  const authId = crypto.randomUUID(); // Generates a dummy auth_id for now
+  const authId = crypto.randomUUID();
 
   return await userRepo.createUser(authId, email, passwordHash, displayName);
 };
@@ -24,12 +23,15 @@ export const loginUser = async (email: string, passwordPlain: string) => {
   if (!isMatch) throw new Error('Invalid email or password');
 
   const token = jwt.sign(
-    { id: user.user_id, email: user.email }, // Updated to user_id
+    { id: user.user_id, email: user.email },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: JWT_EXPIRES_IN },
   );
 
-  return { user: { id: user.user_id, email: user.email, displayName: user.display_name }, token };
+  return {
+    user: { id: user.user_id, email: user.email, displayName: user.display_name },
+    token,
+  };
 };
 
 export const getUserProfile = async (userId: string) => {
@@ -38,7 +40,10 @@ export const getUserProfile = async (userId: string) => {
   return user;
 };
 
-export const updateUserProfile = async (userId: string, updateData: { email: string; displayName: string }) => {
+export const updateUserProfile = async (
+  userId: string,
+  updateData: { email: string; displayName: string },
+) => {
   const user = await userRepo.findUserById(userId);
   if (!user) throw new Error('User not found');
   return await userRepo.updateUser(userId, updateData.email, updateData.displayName);

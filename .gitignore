@@ -20,4 +20,4 @@ build/
 
 # Database / Certs
 *.pem
-*.crt
+*.crtapps.zip
