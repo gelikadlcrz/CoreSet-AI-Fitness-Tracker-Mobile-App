@@ -5,17 +5,17 @@
     "slug": "coreset",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icons/app-icon.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "coreset",
     "userInterfaceStyle": "dark",
     "splash": {
-  "image": "./assets/images/placeholder.png",
-  "resizeMode": "contain",
-  "backgroundColor": "#0A0A0F"
-},
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D0D0D"
+    },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.coreset.app",
+      "bundleIdentifier": "com.404.coreset",
       "infoPlist": {
         "NSCameraUsageDescription": "CoreSet uses the camera to analyse your exercise form and count repetitions on-device. No video is stored or transmitted.",
         "NSMicrophoneUsageDescription": "Microphone access is not used."
@@ -24,8 +24,9 @@
     "android": {
       "package": "com.coreset.app",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icons/app-icon.png",
-        "backgroundColor": "#0A0A0F"
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundColor": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "permissions": [
         "android.permission.CAMERA"
@@ -33,6 +34,14 @@
     },
     "plugins": [
   "expo-router",
+  [
+    "expo-splash-screen",
+    {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D0D0D"
+    }
+  ],
   [
     "react-native-vision-camera",
     {
