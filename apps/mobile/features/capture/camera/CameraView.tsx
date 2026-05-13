@@ -9,7 +9,7 @@
  *  - Start / Stop / Reset controls
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -23,6 +23,7 @@ import {
   Camera,
   useCameraDevice,
   useCameraPermission,
+  useCameraFormat,
 } from 'react-native-vision-camera';
 
 import { useCapture } from '../hooks/useCapture';
@@ -31,6 +32,13 @@ import { RepOverlay } from '../overlays/RepOverlay';
 export default function CameraView() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('front');
+  const format = useCameraFormat(device, [
+    { fps: 30 },
+    { videoResolution: { width: 640, height: 480 } },
+  ]);
+
+  // Use the actual fps the format supports, not hardcoded 30
+  const targetFps = format?.maxFps ? Math.min(30, format.maxFps) : undefined;
 
   const { state, frameProcessor, startCapture, stopCapture, resetReps } = useCapture();
 
@@ -82,13 +90,11 @@ export default function CameraView() {
         device={device}
         isActive={true}
         frameProcessor={frameProcessor}
-        // 30 fps target — matches our pipeline assumption
-        fps={30}
-        // Enable high-quality photo if needed later
+        format={format}
+        fps={targetFps}
         photo={false}
         video={false}
         audio={false}
-        // Prefer the best capture quality the device supports
         videoStabilizationMode="auto"
       />
 
