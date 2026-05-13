@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "CoreSet",
+    "newArchEnabled": true,
     "slug": "coreset",
     "version": "1.0.0",
     "orientation": "portrait",

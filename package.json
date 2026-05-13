@@ -4,7 +4,9 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "lint": "turbo run lint"
+    "lint": "turbo run lint",
+    "install:ci": "pnpm install --frozen-lockfile"
+
   },
   "dependencies": {
     "@nozbe/watermelondb": "^0.28.0",
