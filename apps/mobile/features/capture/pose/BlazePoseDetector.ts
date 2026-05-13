@@ -43,9 +43,11 @@ let blazePoseModel: TensorflowModel | null = null;
 export async function loadBlazePose(): Promise<void> {
   if (blazePoseModel) return;
 
-  const [asset] = await Asset.loadAsync(
-    require('../../../ml/models/blazepose.tflite')
+  const asset = Asset.fromModule(
+    require('../../../ml/models/blazepose_v2.tflite')
   );
+  
+  await asset.downloadAsync();
 
   blazePoseModel = await loadTensorflowModel(
     { url: asset.localUri! },

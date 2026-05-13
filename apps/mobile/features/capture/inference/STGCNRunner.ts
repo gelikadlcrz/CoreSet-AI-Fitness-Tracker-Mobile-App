@@ -53,14 +53,14 @@ export class STGCNRunner {
     if (this.model) return;
 
     // Resolve the bundled TFLite asset
-    const [asset] = await Asset.loadAsync(
+   const asset = Asset.fromModule(
       require('../../../ml/models/stgcn_int8.tflite')
     );
+    await asset.downloadAsync();
 
     this.model = await loadTensorflowModel(
       { url: asset.localUri! },
-      // Prefer NNAPI on Android (hardware acceleration), fall back to CPU
-      'core-ml',
+      'default',
     );
   }
 
