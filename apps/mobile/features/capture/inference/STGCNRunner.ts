@@ -1,17 +1,7 @@
 /**
  * STGCNRunner
  *
- * Wraps the INT8-quantized ST-GCN TFLite model.
- * Uses react-native-fast-tflite for zero-copy GPU/NNAPI delegation.
- *
- * Model I/O contract (derived from training):
- *   Input  : Float32 [1, T, V, C] = [1, 30, 33, 3]  (after INT8 dequantisation)
- *   Output 0: Float32 [1, 4]        (classification logits: squat, pushup, bench, pullup)
- *   Output 1: Float32 [1, T]        (density map over time)
- *
- * INT8 quantisation:
- *   The TFLite runtime handles dequantisation automatically when the input
- *   tensor dtype is FLOAT32 — we pass float32 and the delegate converts.
+ * Wraps the deployed ST-GCN TFLite model.
  */
 
 import { loadTensorflowModel, TensorflowModel } from 'react-native-fast-tflite';
@@ -23,21 +13,28 @@ export const CLASS_LABELS = ['squat', 'pushup', 'benchpress', 'pullup'] as const
 export type ExerciseClass = typeof CLASS_LABELS[number];
 
 export interface STGCNOutput {
-  /** Predicted exercise class */
   exerciseClass: ExerciseClass;
-  /** Softmax confidence for each class */
   classProbs: number[];
-  /** Raw density map over T frames (sums to rep count) */
   densityMap: number[];
-  /** Estimated rep count from density integral */
   repCount: number;
 }
 
 function softmax(logits: number[]): number[] {
-  const max = Math.max(...logits);
-  const exps = logits.map(l => Math.exp(l - max));
-  const sum = exps.reduce((a, b) => a + b, 0);
+  const finite = logits.map(v => (Number.isFinite(v) ? v : 0));
+  const max = Math.max(...finite);
+  const exps = finite.map(l => Math.exp(l - max));
+  const sum = exps.reduce((a, b) => a + b, 0) || 1;
   return exps.map(e => e / sum);
+}
+
+function toNumberArray(output: unknown): number[] {
+  if (ArrayBuffer.isView(output)) {
+    return Array.from(output as ArrayLike<number>).map(v => Number(v));
+  }
+  if (Array.isArray(output)) {
+    return output.map(v => Number(v));
+  }
+  return [];
 }
 
 export class STGCNRunner {
@@ -52,52 +49,53 @@ export class STGCNRunner {
   async load(): Promise<void> {
     if (this.model) return;
 
-    // Resolve the bundled TFLite asset
-   const asset = Asset.fromModule(
-      require('../../../ml/models/stgcn_int8.tflite')
-    );
+    const asset = Asset.fromModule(require('../../../ml/models/stgcn_int8.tflite'));
     await asset.downloadAsync();
 
-    this.model = await loadTensorflowModel(
-      { url: asset.localUri! },
-      'default',
-    );
+    // Cross-platform default delegate. Do not force CoreML so the same code path
+    // works for Android teammates too.
+    this.model = await loadTensorflowModel({ url: asset.localUri! }, 'default');
+
+    const modelAny = this.model as any;
+    console.log('STGCN loaded', {
+      inputs: modelAny?.inputs,
+      outputs: modelAny?.outputs,
+    });
   }
 
-  /**
-   * Run inference on a pre-built window tensor.
-   *
-   * @param windowTensor Float32Array of shape [T * V * C] (T=30, V=33, C=3)
-   *   Layout: frame-major, i.e. index = t*V*C + v*C + c
-   */
   async run(windowTensor: Float32Array): Promise<STGCNOutput> {
     if (!this.model) throw new Error('STGCNRunner: model not loaded. Call load() first.');
 
-    const expectedLen = WINDOW_SIZE * NUM_JOINTS * 3;
+    const expectedLen = FEATURE_DIM * WINDOW_SIZE * NUM_JOINTS * 1;
     if (windowTensor.length !== expectedLen) {
       throw new Error(`Expected tensor of length ${expectedLen}, got ${windowTensor.length}`);
     }
 
-    // Run inference — react-native-fast-tflite accepts typed arrays directly
-    const outputs = await this.model.run([windowTensor]);
+    const rawOutputs = await this.model.run([windowTensor]);
+    const outputs = rawOutputs.map(toNumberArray);
 
-    // --- Classification head ---
-    const logits = Array.from(outputs[0] as Float32Array);
-    const classProbs = softmax(logits);
+    // TFLite output order can change during conversion/export. Select by shape
+    // instead of assuming output[0] is always logits and output[1] is density.
+    const classOutput = outputs.find(o => o.length === CLASS_LABELS.length) ?? outputs[0] ?? [];
+    const densityOutput = outputs.find(o => o.length !== CLASS_LABELS.length && o.length > 0) ?? outputs[1] ?? [];
+
+    const classProbs = softmax(classOutput);
     const classIdx = classProbs.indexOf(Math.max(...classProbs));
-    const exerciseClass = CLASS_LABELS[classIdx];
+    const exerciseClass = CLASS_LABELS[classIdx] ?? 'pullup';
 
-    // --- Density-map head ---
-    const densityMap = Array.from(outputs[1] as Float32Array);
+    const densityMap = densityOutput.map(v => (Number.isFinite(v) ? v : 0));
+    const repCount = Math.max(0, densityMap.reduce((a, b) => a + Math.max(0, b), 0));
 
-    // Rep count = integral of density map (sum, as per density-map training convention)
-    const repCount = Math.max(0, densityMap.reduce((a, b) => a + b, 0));
+    const maxDensity = densityMap.length ? Math.max(...densityMap) : 0;
+    const minDensity = densityMap.length ? Math.min(...densityMap) : 0;
+    console.log(
+      `STGCN raw: outputLens=${outputs.map(o => o.length).join(',')}, class=${exerciseClass}, probs=${classProbs.map(p => p.toFixed(2)).join('/')}, densityRange=${minDensity.toFixed(3)}..${maxDensity.toFixed(3)}`,
+    );
 
     return { exerciseClass, classProbs, densityMap, repCount };
   }
 
   dispose(): void {
-    // react-native-fast-tflite models are GC'd; no explicit dispose needed
     this.model = null;
     STGCNRunner.instance = null;
   }
