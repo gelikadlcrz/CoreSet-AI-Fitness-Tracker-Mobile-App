@@ -3,8 +3,11 @@ module.exports = function (api) {
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      // react-native-reanimated MUST be last
-      'react-native-reanimated/plugin',
+      ['@babel/plugin-transform-typescript', { isTSX: true, allowDeclareFields: true }],
+      ['@babel/plugin-proposal-decorators', { legacy: true }],
+      ['@babel/plugin-transform-class-properties', { loose: true }],
+      'react-native-worklets-core/plugin', 
+      'react-native-reanimated/plugin',    // must be last
     ],
   };
 };

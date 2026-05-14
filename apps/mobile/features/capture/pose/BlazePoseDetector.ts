@@ -51,7 +51,7 @@ export async function loadBlazePose(): Promise<void> {
 
   blazePoseModel = await loadTensorflowModel(
     { url: asset.localUri! },
-    'core-ml',
+    'default',
   );
 }
 
@@ -72,6 +72,7 @@ export function disposeBlazePose(): void {
  * frame.pixelFormat property exposed by Vision Camera v4.
  */
 export function frameToInputTensor(frame: Frame): Float32Array {
+  'worklet';
   const { width, height } = frame;
   const pixelFormat: string = (frame as any).pixelFormat ?? 'rgba-8888';
   const buffer: ArrayBuffer = (frame as any).toArrayBuffer();

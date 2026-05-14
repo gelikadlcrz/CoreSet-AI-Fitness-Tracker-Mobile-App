@@ -11,7 +11,7 @@
  *     → TemporalBuffer.push()
  *     → (every STRIDE frames) STGCNRunner.run()  [fast-tflite / NNAPI]
  *     → RepCounter.processWindow()
- *     → setState()                [UI thread via runOnJS]
+ *     → setState()                [UI thread via Worklets.createRunOnJS]
  *
  * Both TFLite models are loaded once on mount and reused for the session.
  * Raw frame pixels are never stored — only the 33-landmark float arrays.
@@ -19,9 +19,8 @@
  * Threading model:
  *   frameToInputTensor runs synchronously inside the Vision Camera worklet.
  *   detectPose + STGCNRunner.run are async (fast-tflite dispatches to a
- *   native thread), so they are called via runOnJS to avoid blocking the
- *   camera thread.  The pipeline is pipelined: frame N's tensor is submitted
- *   while frame N-1's inference is still in flight.
+ *   native thread), so they are called via Worklets.createRunOnJS to avoid
+ *   blocking the camera thread.
  */
 
 import { useRef, useState, useCallback, useEffect } from 'react';
@@ -30,7 +29,7 @@ import {
   type Frame,
   runAtTargetFps,
 } from 'react-native-vision-camera';
-import { runOnJS } from 'react-native-reanimated';
+import { useSharedValue, Worklets } from 'react-native-worklets-core';
 
 import {
   loadBlazePose,
@@ -46,15 +45,12 @@ import { RepCounter, type RepEvent } from '../postprocessing/RepCounter';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** Run ST-GCN inference every STRIDE frames (50% overlap with window) */
 const STRIDE = Math.floor(WINDOW_SIZE / 2);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CaptureState {
-  /** Both TFLite models loaded and ready */
   isReady: boolean;
-  /** User has pressed START */
   isRunning: boolean;
   repCount: number;
   exerciseClass: ExerciseClass | null;
@@ -78,17 +74,16 @@ const initialState: CaptureState = {
 export function useCapture() {
   const [state, setState] = useState<CaptureState>(initialState);
 
-  // Pipeline objects — stable refs, never trigger re-renders
-  const bufferRef           = useRef(new TemporalBuffer(WINDOW_SIZE));
-  const repCounterRef       = useRef(new RepCounter());
-  const stgcnRunnerRef      = useRef(STGCNRunner.getInstance());
-  const frameIndexRef       = useRef(0);
-  const windowStartRef      = useRef(0);
-  const fpsTimestampsRef    = useRef<number[]>([]);
-  // Guard against overlapping async inference calls
+  const bufferRef            = useRef(new TemporalBuffer(WINDOW_SIZE));
+  const repCounterRef        = useRef(new RepCounter());
+  const stgcnRunnerRef       = useRef(STGCNRunner.getInstance());
+  const frameIndexRef        = useRef(0);
+  const windowStartRef       = useRef(0);
+  const fpsTimestampsRef     = useRef<number[]>([]);
   const inferenceInFlightRef = useRef(false);
-  // Guard against overlapping async pose calls
-  const poseInFlightRef      = useRef(false);
+
+  // Shared value accessible from Vision Camera worklet thread
+  const poseInFlight = useSharedValue(false);
 
   // ── Load both models on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -117,7 +112,7 @@ export function useCapture() {
     };
   }, []);
 
-  // ── UI-thread callbacks (called via runOnJS) ───────────────────────────────
+  // ── UI-thread callbacks ────────────────────────────────────────────────────
 
   const updateClassification = useCallback(
     (exerciseClass: ExerciseClass, confidence: number) => {
@@ -134,25 +129,19 @@ export function useCapture() {
     setState(s => ({ ...s, error: msg }));
   }, []);
 
-  // ── Async inference pipeline (runs on JS thread, not camera thread) ────────
+  // ── Async inference pipeline ───────────────────────────────────────────────
 
-  /**
-   * Step 2b: given a resolved landmark array, normalise → buffer → maybe infer.
-   * Called via runOnJS after detectPose resolves.
-   */
   const onLandmarksReady = useCallback(
     (landmarks: RawLandmarks) => {
-      poseInFlightRef.current = false;
+      poseInFlight.value = false;
 
       if (!isFrameUsable(landmarks)) return;
 
-      // Normalise to joint-angle feature vector
       const featureVec = normalisePose(landmarks);
       bufferRef.current.push(featureVec);
 
       const frameIdx = ++frameIndexRef.current;
 
-      // FPS bookkeeping
       const now = Date.now();
       fpsTimestampsRef.current.push(now);
       fpsTimestampsRef.current = fpsTimestampsRef.current.filter(t => now - t < 1000);
@@ -160,15 +149,14 @@ export function useCapture() {
         updateFps(fpsTimestampsRef.current.length);
       }
 
-      // Trigger ST-GCN every STRIDE frames once we have a full window
       if (
         frameIdx % STRIDE === 0 &&
         bufferRef.current.size >= WINDOW_SIZE &&
         !inferenceInFlightRef.current
       ) {
         inferenceInFlightRef.current = true;
-        const windowTensor  = bufferRef.current.getWindow();
-        const windowStart   = windowStartRef.current;
+        const windowTensor = bufferRef.current.getWindow();
+        const windowStart  = windowStartRef.current;
         windowStartRef.current = frameIdx;
         runStgcn(windowTensor, windowStart);
       }
@@ -176,30 +164,26 @@ export function useCapture() {
     [updateFps],
   );
 
-  /** Step 2a: run BlazePose async, then hand landmarks to onLandmarksReady */
   const runBlazePoseAsync = useCallback(
-    async (inputTensor: Float32Array) => {
+    async (inputTensorData: number[]) => {
       try {
+        const inputTensor = new Float32Array(inputTensorData);
         const landmarks = await detectPose(inputTensor);
         onLandmarksReady(landmarks);
       } catch (e: any) {
-        poseInFlightRef.current = false;
+        poseInFlight.value = false;
         reportError(e?.message ?? 'BlazePose inference error');
       }
     },
     [onLandmarksReady, reportError],
   );
 
-  /** Step 3: run ST-GCN on the assembled window tensor */
   const runStgcn = useCallback(
     async (windowTensor: Float32Array, windowStart: number) => {
       try {
         const result = await stgcnRunnerRef.current.run(windowTensor);
-
-        const maxProb    = Math.max(...result.classProbs);
-        const confidence = maxProb;
+        const confidence = Math.max(...result.classProbs);
         updateClassification(result.exerciseClass, confidence);
-
         repCounterRef.current.processWindow(result.densityMap, windowStart);
       } catch (e: any) {
         reportError(e?.message ?? 'ST-GCN inference error');
@@ -210,13 +194,13 @@ export function useCapture() {
     [updateClassification, reportError],
   );
 
-  // ── Frame processor (camera thread / worklet) ──────────────────────────────
+  // ── Vision Camera worklet-safe JS callbacks ────────────────────────────────
 
-  /**
-   * Runs at 30 fps on the camera thread.
-   * Only does synchronous work (pixel conversion + resize).
-   * Async pose inference is dispatched to the JS thread via runOnJS.
-   */
+  const runBlazePoseAsyncOnJS = Worklets.createRunOnJS(runBlazePoseAsync);
+  const reportErrorOnJS       = Worklets.createRunOnJS(reportError);
+
+  // ── Frame processor (camera worklet thread) ────────────────────────────────
+
   const frameProcessor = useFrameProcessor(
     (frame: Frame) => {
       'worklet';
@@ -226,22 +210,18 @@ export function useCapture() {
       runAtTargetFps(30, () => {
         'worklet';
 
-        // Skip if previous pose call hasn't finished (backpressure)
-        if (poseInFlightRef.current) return;
+        if (poseInFlight.value) return;
 
         try {
-          // Synchronous: convert frame pixels → float32 tensor
           const inputTensor = frameToInputTensor(frame);
-          poseInFlightRef.current = true;
-          // Hand off to JS thread for async TFLite inference
-          runOnJS(runBlazePoseAsync)(inputTensor);
+          poseInFlight.value = true;
+          runBlazePoseAsyncOnJS(Array.from(inputTensor));
         } catch (e: any) {
-          runOnJS(reportError)(e?.message ?? 'Frame conversion error');
+          reportErrorOnJS(e?.message ?? 'Frame conversion error');
         }
       });
     },
-    // state.isRunning is accessed inside the worklet — list it as dependency
-    [state.isRunning, runBlazePoseAsync, reportError],
+    [state.isRunning, runBlazePoseAsyncOnJS, reportErrorOnJS],
   );
 
   // ── Controls ───────────────────────────────────────────────────────────────
@@ -249,11 +229,11 @@ export function useCapture() {
   const startCapture = useCallback(() => {
     bufferRef.current.reset();
     repCounterRef.current.reset();
-    frameIndexRef.current    = 0;
-    windowStartRef.current   = 0;
-    fpsTimestampsRef.current = [];
+    frameIndexRef.current        = 0;
+    windowStartRef.current       = 0;
+    fpsTimestampsRef.current     = [];
     inferenceInFlightRef.current = false;
-    poseInFlightRef.current      = false;
+    poseInFlight.value           = false;
     setState(s => ({ ...s, isRunning: true, repCount: 0, error: null }));
   }, []);
 
