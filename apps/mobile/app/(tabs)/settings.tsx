@@ -14,6 +14,7 @@ import SettingsSection from '../../features/settings/components/SettingsSection'
 import SettingsRow from '../../features/settings/components/SettingsRow';
 import TogglePill from '../../features/settings/components/TogglePill';
 import ProfileCard from '../../features/settings/components/ProfileCard';
+import DeleteConfirmationModal from '../../features/settings/components/DeleteConfirmationModal';
 
 export default function SettingsScreen() {
   const [weightUnit, setWeightUnit] =
@@ -27,202 +28,250 @@ export default function SettingsScreen() {
       'dark'
     );
 
+  const [
+    deleteModalVisible,
+    setDeleteModalVisible,
+  ] = useState(false);
+
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={
-        styles.content
-      }
-      showsVerticalScrollIndicator={
-        false
-      }
-    >
-      <View style={styles.header}>
-        <Text style={styles.title}>
-          Settings & Profile
-        </Text>
-
-        <TouchableOpacity
-          style={styles.saveButton}
-        >
-          <Text style={styles.saveText}>
-            Save
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <SettingsSection title="User Profile">
-        <ProfileCard />
-      </SettingsSection>
-
-      <SettingsSection title="Body Stats">
-        <SettingsRow
-          label="Weight"
-          value="75 kg"
-        />
-
-        <SettingsRow
-          label="Height"
-          value="175 cm"
-        />
-
-        <SettingsRow
-          label="Body Fat"
-          value="14%"
-        />
-
-        <SettingsRow
-          label="Body Type"
-          value="Ectomorph"
-          noBorder
-        />
-      </SettingsSection>
-
-      <SettingsSection title="Preferences">
-        <SettingsRow label="Weight Unit">
-          <TogglePill
-            leftLabel="kg"
-            rightLabel="lbs"
-            selected={
-              weightUnit === 'kg'
-                ? 'left'
-                : 'right'
-            }
-            onLeftPress={() =>
-              setWeightUnit('kg')
-            }
-            onRightPress={() =>
-              setWeightUnit('lbs')
-            }
-          />
-        </SettingsRow>
-
-        <SettingsRow label="Distance Unit">
-          <TogglePill
-            leftLabel="km"
-            rightLabel="mi"
-            selected={
-              distanceUnit === 'km'
-                ? 'left'
-                : 'right'
-            }
-            onLeftPress={() =>
-              setDistanceUnit('km')
-            }
-            onRightPress={() =>
-              setDistanceUnit('mi')
-            }
-          />
-        </SettingsRow>
-
-        <SettingsRow
-          label="App Theme"
-          noBorder
-        >
-          <TogglePill
-            leftLabel="Dark"
-            rightLabel="Light"
-            selected={
-              theme === 'dark'
-                ? 'left'
-                : 'right'
-            }
-            onLeftPress={() =>
-              setTheme('dark')
-            }
-            onRightPress={() =>
-              setTheme('light')
-            }
-          />
-        </SettingsRow>
-      </SettingsSection>
-
-      <SettingsSection title="Workout Defaults">
-        <SettingsRow
-          label="Global Default Rest Interval"
-          value="01:30"
-        />
-
-        <SettingsRow
-          label="Warm-up Set Rest"
-          value="01:30"
-        />
-
-        <SettingsRow
-          label="Working Set Rest"
-          value="01:30"
-        />
-
-        <SettingsRow
-          label="Drop Set Rest"
-          value="01:30"
-        />
-
-        <SettingsRow
-          label="Failure Set Rest"
-          value="01:30"
-          noBorder
-        />
-      </SettingsSection>
-
-      <SettingsSection title="AI Configuration">
-        <View>
-          <Text
-            style={styles.sliderLabel}
-          >
-            Model Confidence Threshold
+    <>
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={
+          styles.content
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>
+            Settings & Profile
           </Text>
 
-          <View
-            style={styles.sliderTrack}
+          <TouchableOpacity
+            style={styles.saveButton}
           >
-            <View
-              style={styles.sliderFill}
-            />
-
-            <View
-              style={styles.sliderThumb}
+            <Text
+              style={styles.saveText}
             >
-              <Text
+              Save
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <SettingsSection title="User Profile">
+          <ProfileCard />
+        </SettingsSection>
+
+        <SettingsSection title="Body Stats">
+          <SettingsRow
+            label="Weight"
+            value="75 kg"
+          />
+
+          <SettingsRow
+            label="Height"
+            value="175 cm"
+          />
+
+          <SettingsRow
+            label="Body Fat"
+            value="14%"
+          />
+
+          <SettingsRow
+            label="Body Type"
+            value="Ectomorph"
+            noBorder
+          />
+        </SettingsSection>
+
+        <SettingsSection title="Preferences">
+          <SettingsRow label="Weight Unit">
+            <TogglePill
+              leftLabel="kg"
+              rightLabel="lbs"
+              selected={
+                weightUnit === 'kg'
+                  ? 'left'
+                  : 'right'
+              }
+              onLeftPress={() =>
+                setWeightUnit('kg')
+              }
+              onRightPress={() =>
+                setWeightUnit('lbs')
+              }
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Distance Unit">
+            <TogglePill
+              leftLabel="km"
+              rightLabel="mi"
+              selected={
+                distanceUnit === 'km'
+                  ? 'left'
+                  : 'right'
+              }
+              onLeftPress={() =>
+                setDistanceUnit('km')
+              }
+              onRightPress={() =>
+                setDistanceUnit('mi')
+              }
+            />
+          </SettingsRow>
+
+          <SettingsRow
+            label="App Theme"
+            noBorder
+          >
+            <TogglePill
+              leftLabel="Dark"
+              rightLabel="Light"
+              selected={
+                theme === 'dark'
+                  ? 'left'
+                  : 'right'
+              }
+              onLeftPress={() =>
+                setTheme('dark')
+              }
+              onRightPress={() =>
+                setTheme('light')
+              }
+            />
+          </SettingsRow>
+        </SettingsSection>
+
+        <SettingsSection title="Workout Defaults">
+          <SettingsRow
+            label="Global Default Rest Interval"
+            value="01:30"
+          />
+
+          <SettingsRow
+            label="Warm-up Set Rest"
+            value="01:30"
+          />
+
+          <SettingsRow
+            label="Working Set Rest"
+            value="01:30"
+          />
+
+          <SettingsRow
+            label="Drop Set Rest"
+            value="01:30"
+          />
+
+          <SettingsRow
+            label="Failure Set Rest"
+            value="01:30"
+            noBorder
+          />
+        </SettingsSection>
+
+        <SettingsSection title="AI Configuration">
+          <View>
+            <Text
+              style={
+                styles.sliderLabel
+              }
+            >
+              Model Confidence
+              Threshold
+            </Text>
+
+            <View
+              style={
+                styles.sliderTrack
+              }
+            >
+              <View
                 style={
-                  styles.sliderValue
+                  styles.sliderFill
+                }
+              />
+
+              <View
+                style={
+                  styles.sliderThumb
                 }
               >
-                85%
-              </Text>
+                <Text
+                  style={
+                    styles.sliderValue
+                  }
+                >
+                  85%
+                </Text>
+              </View>
             </View>
-          </View>
 
-          <Text
-            style={
-              styles.sliderDescription
+            <Text
+              style={
+                styles.sliderDescription
+              }
+            >
+              Lower values improve
+              precision while higher
+              values improve form
+              strictness.
+            </Text>
+          </View>
+        </SettingsSection>
+
+        <SettingsSection title="Data Management">
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() =>
+              setDeleteModalVisible(
+                true
+              )
             }
           >
-            Lower values improve
-            precision while higher
-            values improve form
-            strictness.
-          </Text>
-        </View>
-      </SettingsSection>
+            <Text
+              style={
+                styles.deleteText
+              }
+            >
+              DELETE ALL LOCAL
+              DATA
+            </Text>
+          </TouchableOpacity>
 
-      <SettingsSection title="Data Management">
-        <TouchableOpacity
-          style={styles.deleteButton}
-        >
-          <Text style={styles.deleteText}>
-            DELETE ALL LOCAL DATA
+          <Text
+            style={styles.warningText}
+          >
+            This action cannot be
+            undone
           </Text>
-        </TouchableOpacity>
+        </SettingsSection>
+      </ScrollView>
 
-        <Text
-          style={styles.warningText}
-        >
-          This action cannot be
-          undone
-        </Text>
-      </SettingsSection>
-    </ScrollView>
+      <DeleteConfirmationModal
+        visible={
+          deleteModalVisible
+        }
+        onClose={() =>
+          setDeleteModalVisible(
+            false
+          )
+        }
+        onConfirm={() => {
+          setDeleteModalVisible(
+            false
+          );
+
+          console.log(
+            'DELETE ALL LOCAL DATA'
+          );
+        }}
+      />
+    </>
   );
 }
 
@@ -236,7 +285,7 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 72,
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
 
   header: {
@@ -271,6 +320,7 @@ const styles = StyleSheet.create({
     color: '#000',
 
     fontWeight: '800',
+    fontSize: 16,
   },
 
   sliderLabel: {
