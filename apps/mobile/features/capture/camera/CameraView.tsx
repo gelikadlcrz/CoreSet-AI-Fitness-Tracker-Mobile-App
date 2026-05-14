@@ -96,6 +96,7 @@ export default function CameraView() {
         photo={false}
         video={false}
         audio={false}
+        pixelFormat="rgb"
         videoStabilizationMode="auto"
       />
 
