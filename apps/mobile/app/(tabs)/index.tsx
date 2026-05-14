@@ -1,26 +1,41 @@
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, StyleSheet } from 'react-native';
+
+import { COLORS } from '../../shared/theme';
 
 export default function DashboardScreen() {
-  const router = useRouter();
   return (
-    <View style={styles.root}>
-      <Text style={styles.title}>CoreSet</Text>
-      <Text style={styles.sub}>Edge AI Fitness Tracker</Text>
-      <Pressable style={styles.btn} onPress={() => router.push('/capture')}>
-        <Text style={styles.btnText}>START WORKOUT</Text>
-      </Pressable>
+    <View style={styles.container}>
+      <Text style={styles.title}>Dashboard</Text>
+
+      <Text style={styles.subtitle}>
+        Workout summaries, AI recommendations, analytics, streaks, and active
+        sessions will appear here.
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0A0A0F', justifyContent: 'center', alignItems: 'center', gap: 16 },
-  title: { color: '#FFF', fontSize: 36, fontWeight: '900', letterSpacing: 2 },
-  sub: { color: '#FFFFFF55', fontSize: 14, letterSpacing: 1 },
-  btn: {
-    marginTop: 32, backgroundColor: '#00E5FF',
-    paddingHorizontal: 40, paddingVertical: 18, borderRadius: 16,
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+
+    paddingTop: 80,
+    paddingHorizontal: 24,
   },
-  btnText: { color: '#000', fontWeight: '800', fontSize: 16, letterSpacing: 2 },
+
+  title: {
+    color: COLORS.text,
+    fontSize: 42,
+    fontWeight: '800',
+  },
+
+  subtitle: {
+    marginTop: 16,
+
+    color: COLORS.textSecondary,
+
+    fontSize: 18,
+    lineHeight: 28,
+  },
 });

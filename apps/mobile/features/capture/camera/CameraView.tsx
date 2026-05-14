@@ -25,6 +25,7 @@ import {
   useCameraPermission,
   useCameraFormat,
 } from 'react-native-vision-camera';
+import { COLORS } from '@/shared/theme';
 
 import { useCapture } from '../hooks/useCapture';
 import { RepOverlay } from '../overlays/RepOverlay';
@@ -201,7 +202,7 @@ const styles = StyleSheet.create({
     shadowColor: '#FF4444',
   },
   ctrlBtnText: {
-    color: '#FFFFFF',
+    color: COLORS.text,
     fontWeight: '700',
     fontSize: 13,
     letterSpacing: 2,

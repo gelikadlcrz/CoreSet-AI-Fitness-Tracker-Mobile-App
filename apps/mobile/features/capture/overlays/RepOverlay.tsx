@@ -18,6 +18,7 @@ import Animated, {
   useDerivedValue,
 } from 'react-native-reanimated';
 import { ExerciseClass } from '../inference/STGCNRunner';
+import { COLORS } from '@/shared/theme/colors';
 
 const { width, height } = Dimensions.get('window');
 
@@ -74,7 +75,7 @@ export function RepOverlay({
     opacity: opacity.value,
   }));
 
-  const accentColor = exerciseClass ? CLASS_COLORS[exerciseClass] : '#FFFFFF';
+  const accentColor = exerciseClass ? CLASS_COLORS[exerciseClass] : COLORS.text;
   const confidencePct = Math.round(classConfidence * 100);
 
   return (

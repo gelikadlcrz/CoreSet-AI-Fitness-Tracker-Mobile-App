@@ -1,59 +1,81 @@
 import { Tabs } from 'expo-router';
-import { View, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
-const ACCENT = '#00E5FF';
-const INACTIVE = '#FFFFFF44';
-const BG = '#0A0A0F';
+import { COLORS } from '../../shared/theme';
 
-function TabIcon({ focused, color, size, children }: any) {
-  return (
-    <View style={[styles.iconWrap, focused && { backgroundColor: ACCENT + '22' }]}>
-      <View style={[styles.dot, { backgroundColor: color }]} />
-    </View>
-  );
-}
-
-export default function TabLayout() {
+export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+
+        tabBarShowLabel: false,
+
         tabBarStyle: {
-          backgroundColor: BG,
-          borderTopColor: '#FFFFFF11',
-          height: 64,
+          position: 'absolute',
+
+          left: 16,
+          right: 16,
+          bottom: 18,
+
+          height: 82,
+
+          paddingTop: 14,
+          paddingBottom: 12,
+
+          borderRadius: 28,
+
+          backgroundColor: COLORS.surface,
+
+          borderTopWidth: 1,
+          borderTopColor: COLORS.border,
+
+          elevation: 0,
         },
-        tabBarActiveTintColor: ACCENT,
-        tabBarInactiveTintColor: INACTIVE,
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-          letterSpacing: 1,
-          marginBottom: 8,
-        },
+
+        tabBarActiveTintColor: COLORS.accent,
+        tabBarInactiveTintColor: COLORS.textSecondary,
       }}
     >
       <Tabs.Screen
         name="index"
-        options={{ title: 'DASHBOARD' }}
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" size={28} color={color} />
+          ),
+        }}
       />
+
       <Tabs.Screen
         name="library"
-        options={{ title: 'LIBRARY' }}
+        options={{
+          title: 'Library',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="barbell" size={28} color={color} />
+          ),
+        }}
       />
+
       <Tabs.Screen
         name="analytics"
-        options={{ title: 'ANALYTICS' }}
+        options={{
+          title: 'Analytics',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="stats-chart" size={28} color={color} />
+          ),
+        }}
       />
+
       <Tabs.Screen
         name="settings"
-        options={{ title: 'SETTINGS' }}
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="settings" size={28} color={color} />
+          ),
+        }}
       />
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  iconWrap: { padding: 6, borderRadius: 8, marginTop: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-});
