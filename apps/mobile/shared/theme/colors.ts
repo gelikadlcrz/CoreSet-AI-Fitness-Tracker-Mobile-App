@@ -20,6 +20,7 @@ export const COLORS = {
   // Status
   success: '#18D12F',
   danger: '#FF5A2A',
+  warning: '#FFC247',
 
   // Special badges
   warmup: '#9B6400',
@@ -28,6 +29,9 @@ export const COLORS = {
 
   // Utility
   border: '#6B6B6B',
+  divider: '#343434',
+  input: '#101010',
+
   cardBubble: '#0D0D0D',
   inactive: '#1F1F1F',
 
