@@ -1,10 +1,15 @@
 /**
  * Pose normalisation for ST-GCN input.
  *
- * Matches coreset_dataset.py exactly:
- *   - 14 specific joint-angle triplets (ANGLE_TRIPLETS)
- *   - Each angle placed at vertex joint j
- *   - Output shape: Float32Array [ANGLE_FEATURE_DIM=14]
+ * Mobile inference should match the training preprocessing contract:
+ *  - 14 angle-based channels
+ *  - 33 graph vertices (BlazePose joints)
+ *  - for each angle triplet [i, j, k], the computed angle is placed on the
+ *    vertex joint j for that channel, while the remaining vertices stay 0.
+ *
+ * Per-frame output layout is channel-major:
+ *   index = channel * NUM_JOINTS + vertex
+ * Shape per frame: [C, V] = [14, 33]
  */
 
 import { NUM_JOINTS } from '../graph/adjacencyMatrix';
@@ -17,44 +22,32 @@ export interface Landmark3D {
 }
 
 export const ANGLE_FEATURE_DIM = 14;
+export const FRAME_FEATURES = ANGLE_FEATURE_DIM * NUM_JOINTS;
 
-// Matches ANGLE_TRIPLETS in coreset_dataset.py exactly
 // [proximal, vertex, distal]
 const ANGLE_TRIPLETS: [number, number, number][] = [
-  // Trunk
-  [11, 23, 25],  // left shoulder–hip–knee
-  [12, 24, 26],  // right shoulder–hip–knee
-  // Left arm
-  [11, 13, 15],  // left shoulder–elbow–wrist
-  [13, 15, 17],  // left elbow–wrist–pinky
-  // Right arm
-  [12, 14, 16],  // right shoulder–elbow–wrist
-  [14, 16, 18],  // right elbow–wrist–pinky
-  // Left leg
-  [23, 25, 27],  // left hip–knee–ankle
-  [25, 27, 29],  // left knee–ankle–heel
-  // Right leg
-  [24, 26, 28],  // right hip–knee–ankle
-  [26, 28, 30],  // right knee–ankle–heel
-  // Shoulder-hip
-  [11, 23, 24],  // left shoulder–left hip–right hip
-  [12, 24, 23],  // right shoulder–right hip–left hip
-  // Elbow-shoulder-hip
-  [13, 11, 23],  // left elbow–left shoulder–left hip
-  [14, 12, 24],  // right elbow–right shoulder–right hip
+  [11, 23, 25],
+  [12, 24, 26],
+  [11, 13, 15],
+  [13, 15, 17],
+  [12, 14, 16],
+  [14, 16, 18],
+  [23, 25, 27],
+  [25, 27, 29],
+  [24, 26, 28],
+  [26, 28, 30],
+  [11, 23, 24],
+  [12, 24, 23],
+  [13, 11, 23],
+  [14, 12, 24],
 ];
 
-function angleBetween(
-  a: Landmark3D,
-  b: Landmark3D,
-  c: Landmark3D,
-): number {
+function angleBetween(a: Landmark3D, b: Landmark3D, c: Landmark3D): number {
   const ba = { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
   const bc = { x: c.x - b.x, y: c.y - b.y, z: c.z - b.z };
 
   const normBa = Math.sqrt(ba.x ** 2 + ba.y ** 2 + ba.z ** 2);
   const normBc = Math.sqrt(bc.x ** 2 + bc.y ** 2 + bc.z ** 2);
-
   if (normBa < 1e-9 || normBc < 1e-9) return 0.0;
 
   const cosTheta = (ba.x * bc.x + ba.y * bc.y + ba.z * bc.z) / (normBa * normBc);
@@ -62,33 +55,29 @@ function angleBetween(
 }
 
 /**
- * Compute 14 joint angles from 33 BlazePose landmarks.
- * Returns Float32Array of shape [ANGLE_FEATURE_DIM=14].
- * Matches compute_joint_angles() in coreset_dataset.py exactly.
+ * Compute per-frame graph features of shape [14 * 33].
  */
 export function normalisePose(rawLandmarks: Landmark3D[]): Float32Array {
   if (rawLandmarks.length !== NUM_JOINTS) {
     throw new Error(`Expected ${NUM_JOINTS} landmarks, got ${rawLandmarks.length}`);
   }
 
-  const angles = new Float32Array(ANGLE_FEATURE_DIM);
+  const features = new Float32Array(FRAME_FEATURES);
 
-  for (let idx = 0; idx < ANGLE_TRIPLETS.length; idx++) {
-    const [i, j, k] = ANGLE_TRIPLETS[idx];
+  for (let channel = 0; channel < ANGLE_TRIPLETS.length; channel++) {
+    const [i, j, k] = ANGLE_TRIPLETS[channel];
     const a = rawLandmarks[i];
     const b = rawLandmarks[j];
     const c = rawLandmarks[k];
 
-    // Use 0.0 for invisible joints (matches Python: no visibility check,
-    // just uses coords directly — degenerate case returns 0.0)
-    if (
-      isNaN(a.x) || isNaN(b.x) || isNaN(c.x)
-    ) {
-      angles[idx] = 0.0;
-    } else {
-      angles[idx] = angleBetween(a, b, c);
+    let angle = 0.0;
+    if (!isNaN(a.x) && !isNaN(b.x) && !isNaN(c.x)) {
+      angle = angleBetween(a, b, c);
     }
+
+    const index = channel * NUM_JOINTS + j;
+    features[index] = angle;
   }
 
-  return angles;
+  return features;
 }

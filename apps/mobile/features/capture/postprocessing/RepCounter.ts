@@ -52,7 +52,7 @@ export class RepCounter {
       const globalPeakFrame = windowStartGlobalFrame + localPeakFrame;
 
       // Only count a peak if it's beyond the last counted one + guard zone
-      const guard = Math.floor(STRIDE * 0.5);
+      const guard = Math.max(8, Math.floor(STRIDE * 0.75));
       if (globalPeakFrame > this.lastPeakGlobalFrame + guard) {
         this.totalReps++;
         this.lastPeakGlobalFrame = globalPeakFrame;

@@ -25,10 +25,10 @@ import {
   useCameraPermission,
   useCameraFormat,
 } from 'react-native-vision-camera';
-import { COLORS } from '@/shared/theme';
 
 import { useCapture } from '../hooks/useCapture';
 import { RepOverlay } from '../overlays/RepOverlay';
+import { SkeletonOverlay } from '../overlays/SkeletonOverlay';
 
 export default function CameraView() {
   const { hasPermission, requestPermission } = useCameraPermission();
@@ -99,6 +99,8 @@ export default function CameraView() {
         pixelFormat="rgb"
         videoStabilizationMode="auto"
       />
+
+      <SkeletonOverlay landmarks={state.landmarks} mirror />
 
       {/* Overlay — reps, class, FPS */}
       <RepOverlay
@@ -203,7 +205,7 @@ const styles = StyleSheet.create({
     shadowColor: '#FF4444',
   },
   ctrlBtnText: {
-    color: COLORS.text,
+    color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
     letterSpacing: 2,
