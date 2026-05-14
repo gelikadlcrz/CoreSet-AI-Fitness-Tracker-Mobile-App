@@ -100,7 +100,7 @@ export default function CameraView() {
         videoStabilizationMode="auto"
       />
 
-      <SkeletonOverlay landmarks={state.landmarks} mirror />
+      <SkeletonOverlay landmarks={state.landmarks} frameSize={state.frameSize} mirror />
 
       {/* Overlay — reps, class, FPS */}
       <RepOverlay

@@ -27,6 +27,7 @@ export interface CaptureState {
   fps: number;
   error: string | null;
   landmarks: RawLandmarks | null;
+  frameSize: { width: number; height: number } | null;
 }
 
 const initialState: CaptureState = {
@@ -38,6 +39,7 @@ const initialState: CaptureState = {
   fps: 0,
   error: null,
   landmarks: null,
+  frameSize: null,
 };
 
 function smoothLandmarks(prev: RawLandmarks | null, current: RawLandmarks): RawLandmarks {
@@ -111,7 +113,7 @@ export function useCapture() {
   }, []);
 
   const onLandmarksReady = useCallback(
-    (landmarks: RawLandmarks) => {
+    (landmarks: RawLandmarks, frameSize: { width: number; height: number }) => {
       poseInFlight.value = false;
 
       if (!isFrameUsable(landmarks)) return;
@@ -127,7 +129,7 @@ export function useCapture() {
 
       if (now - lastLandmarkUiUpdateRef.current >= LANDMARK_UI_UPDATE_MS) {
         lastLandmarkUiUpdateRef.current = now;
-        setState(s => ({ ...s, landmarks: smoothedLandmarks }));
+        setState(s => ({ ...s, landmarks: smoothedLandmarks, frameSize }));
       }
 
       fpsTimestampsRef.current.push(now);
@@ -154,9 +156,10 @@ export function useCapture() {
   const runBlazePoseAsync = useCallback(
     async (frame: Frame) => {
       try {
+        const frameSize = { width: frame.width, height: frame.height };
         const inputTensor = await frameToInputTensor(frame);
         const landmarks = await detectPose(inputTensor);
-        onLandmarksReady(landmarks);
+        onLandmarksReady(landmarks, frameSize);
       } catch (e: any) {
         poseInFlight.value = false;
         reportError(e?.message ?? 'BlazePose inference error');
@@ -215,6 +218,7 @@ export function useCapture() {
       error: null,
       fps: 0,
       landmarks: null,
+      frameSize: null,
     }));
   }, []);
 
@@ -228,7 +232,7 @@ export function useCapture() {
     windowStartRef.current = 0;
     bufferRef.current.reset();
     smoothedLandmarksRef.current = null;
-    setState(s => ({ ...s, repCount: 0, landmarks: null }));
+    setState(s => ({ ...s, repCount: 0, landmarks: null, frameSize: null }));
   }, []);
 
   return {

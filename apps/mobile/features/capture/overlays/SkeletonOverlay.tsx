@@ -19,16 +19,38 @@ const BONES: [number, number][] = [
 
 interface SkeletonOverlayProps {
   landmarks: RawLandmarks | null;
+  frameSize: { width: number; height: number } | null;
   mirror?: boolean;
 }
 
-function mapPoint(x: number, y: number, mirror: boolean) {
-  const px = (x / MODEL_SIZE) * SCREEN_WIDTH;
-  const py = (y / MODEL_SIZE) * SCREEN_HEIGHT;
-  return {
-    x: mirror ? SCREEN_WIDTH - px : px,
-    y: py,
-  };
+function isUsableLandmark(lm: any) {
+  return Number.isFinite(lm?.x) && Number.isFinite(lm?.y) && (lm?.visibility ?? 0) > 0.1;
+}
+
+function mapPoint(
+  x: number,
+  y: number,
+  frameSize: { width: number; height: number },
+  mirror: boolean,
+) {
+  // Landmarks are still in the 256x256 model space. Convert them back to the
+  // camera frame space, then apply the same aspect-fill transform used by the
+  // full-screen Camera preview.
+  const sourceX = (x / MODEL_SIZE) * frameSize.width;
+  const sourceY = (y / MODEL_SIZE) * frameSize.height;
+
+  const scale = Math.max(SCREEN_WIDTH / frameSize.width, SCREEN_HEIGHT / frameSize.height);
+  const displayW = frameSize.width * scale;
+  const displayH = frameSize.height * scale;
+  const offsetX = (SCREEN_WIDTH - displayW) / 2;
+  const offsetY = (SCREEN_HEIGHT - displayH) / 2;
+
+  let px = offsetX + sourceX * scale;
+  const py = offsetY + sourceY * scale;
+
+  if (mirror) px = SCREEN_WIDTH - px;
+
+  return { x: px, y: py };
 }
 
 function Bone({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) {
@@ -52,29 +74,31 @@ function Bone({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: numb
   );
 }
 
-export function SkeletonOverlay({ landmarks, mirror = true }: SkeletonOverlayProps) {
-  if (!landmarks || landmarks.length === 0) return null;
+export function SkeletonOverlay({ landmarks, frameSize, mirror = true }: SkeletonOverlayProps) {
+  if (!landmarks || !frameSize) return null;
 
   const visible = landmarks
     .map((lm, index) => ({ lm, index }))
-    .filter(({ lm }) => Number.isFinite(lm.x) && Number.isFinite(lm.y) && (lm.visibility ?? 0) > 0.1);
+    .filter(({ lm }) => isUsableLandmark(lm));
+
+  // Avoid drawing hallucinated skeletons when the landmark model is not really
+  // locked onto a person yet.
+  if (visible.length < 12) return null;
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       {BONES.map(([a, b], idx) => {
         const p1 = landmarks[a];
         const p2 = landmarks[b];
-        if (!p1 || !p2) return null;
-        if (!Number.isFinite(p1.x) || !Number.isFinite(p1.y) || !Number.isFinite(p2.x) || !Number.isFinite(p2.y)) return null;
-        if ((p1.visibility ?? 0) <= 0.1 || (p2.visibility ?? 0) <= 0.1) return null;
+        if (!isUsableLandmark(p1) || !isUsableLandmark(p2)) return null;
 
-        const m1 = mapPoint(p1.x, p1.y, mirror);
-        const m2 = mapPoint(p2.x, p2.y, mirror);
+        const m1 = mapPoint(p1.x, p1.y, frameSize, mirror);
+        const m2 = mapPoint(p2.x, p2.y, frameSize, mirror);
         return <Bone key={`bone-${idx}`} x1={m1.x} y1={m1.y} x2={m2.x} y2={m2.y} />;
       })}
 
       {visible.map(({ lm, index }) => {
-        const p = mapPoint(lm.x, lm.y, mirror);
+        const p = mapPoint(lm.x, lm.y, frameSize, mirror);
         return <View key={`joint-${index}`} style={[styles.joint, { left: p.x - 4, top: p.y - 4 }]} />;
       })}
     </View>

@@ -66,22 +66,28 @@ function frameToLandmarkTensor(frame: Frame): Float32Array {
         r = Math.max(0, Math.min(255, Y + 1.402 * V));
         g = Math.max(0, Math.min(255, Y - 0.344 * U - 0.714 * V));
         b = Math.max(0, Math.min(255, Y + 1.772 * U));
+      } else if (pixelFormat === 'rgb' || pixelFormat === 'rgb-888') {
+        const pIdx = (sy * width + sx) * 3;
+        r = src[pIdx] ?? 0;
+        g = src[pIdx + 1] ?? 0;
+        b = src[pIdx + 2] ?? 0;
       } else if (pixelFormat === 'bgra-8888') {
         const pIdx = (sy * width + sx) * 4;
-        b = src[pIdx];
-        g = src[pIdx + 1];
-        r = src[pIdx + 2];
+        b = src[pIdx] ?? 0;
+        g = src[pIdx + 1] ?? 0;
+        r = src[pIdx + 2] ?? 0;
       } else {
-        const pIdx = (sy * width + sx) * 4;
-        r = src[pIdx];
-        g = src[pIdx + 1];
-        b = src[pIdx + 2];
+        const bytesPerPixel = src.length >= width * height * 4 ? 4 : 3;
+        const pIdx = (sy * width + sx) * bytesPerPixel;
+        r = src[pIdx] ?? 0;
+        g = src[pIdx + 1] ?? 0;
+        b = src[pIdx + 2] ?? 0;
       }
 
       const outIdx = (dy * LANDMARK_INPUT_SIZE + dx) * 3;
-      out[outIdx] = r / 255.0;
-      out[outIdx + 1] = g / 255.0;
-      out[outIdx + 2] = b / 255.0;
+      out[outIdx] = Number.isFinite(r) ? r / 255.0 : 0;
+      out[outIdx + 1] = Number.isFinite(g) ? g / 255.0 : 0;
+      out[outIdx + 2] = Number.isFinite(b) ? b / 255.0 : 0;
     }
   }
 
