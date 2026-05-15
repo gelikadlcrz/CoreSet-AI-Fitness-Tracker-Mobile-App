@@ -1,12 +1,16 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { MediapipeCamera, usePoseDetection } from 'react-native-mediapipe';
 
 export default function MediaPipeTestScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>MediaPipe Test Disabled</Text>
+      <Text style={styles.title}>MediaPipe Import Test</Text>
       <Text style={styles.text}>
-        The app is stable. Next step is to rebuild with the MediaPipe native module before importing it here.
+        MediaPipe imported successfully.
+      </Text>
+      <Text style={styles.small}>
+        Camera not enabled yet.
       </Text>
     </View>
   );
@@ -27,8 +31,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   text: {
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  small: {
     color: '#aaa',
     textAlign: 'center',
-    lineHeight: 22,
   },
 });
