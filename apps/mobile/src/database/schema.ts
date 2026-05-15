@@ -1,42 +1,125 @@
-import {
-  appSchema,
-  tableSchema,
-} from '@nozbe/watermelondb';
+import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 1,
+  version: 2,
 
   tables: [
     tableSchema({
       name: 'exercises',
-
       columns: [
-        {
-          name: 'exercise_id',
-          type: 'string',
-        },
+        { name: 'exercise_id', type: 'string' },
+        { name: 'name', type: 'string' },
+        { name: 'muscle_group', type: 'string' },
+        { name: 'equipment', type: 'string', isOptional: true },
+        { name: 'notes', type: 'string', isOptional: true },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
 
-        {
-          name: 'name',
-          type: 'string',
-        },
+    tableSchema({
+      name: 'user_profiles',
+      columns: [
+        { name: 'display_name', type: 'string' },
+        { name: 'goal', type: 'string' },
+        { name: 'level', type: 'string' },
+        { name: 'gender', type: 'string' },
+        { name: 'age', type: 'number' },
+        { name: 'photo_uri', type: 'string', isOptional: true },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
 
-        {
-          name: 'muscle_group',
-          type: 'string',
-        },
+    tableSchema({
+      name: 'body_stats',
+      columns: [
+        { name: 'weight_kg', type: 'number' },
+        { name: 'height_cm', type: 'number' },
+        { name: 'body_fat_percent', type: 'number' },
+        { name: 'body_type', type: 'string' },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
 
-        {
-          name: 'equipment',
-          type: 'string',
-          isOptional: true,
-        },
+    tableSchema({
+      name: 'app_settings',
+      columns: [
+        { name: 'weight_unit', type: 'string' },
+        { name: 'distance_unit', type: 'string' },
+        { name: 'theme', type: 'string' },
+        { name: 'sound_enabled', type: 'boolean' },
+        { name: 'haptics_enabled', type: 'boolean' },
+        { name: 'default_rest_seconds', type: 'number' },
+        { name: 'warmup_rest_seconds', type: 'number' },
+        { name: 'working_rest_seconds', type: 'number' },
+        { name: 'drop_rest_seconds', type: 'number' },
+        { name: 'failure_rest_seconds', type: 'number' },
+        { name: 'ai_confidence_threshold', type: 'number' },
+        { name: 'ai_smoothing', type: 'number' },
+        { name: 'ai_rep_sensitivity', type: 'number' },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
 
-        {
-          name: 'notes',
-          type: 'string',
-          isOptional: true,
-        },
+    tableSchema({
+      name: 'routines',
+      columns: [
+        { name: 'name', type: 'string' },
+        { name: 'notes', type: 'string', isOptional: true },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+
+    tableSchema({
+      name: 'routine_exercises',
+      columns: [
+        { name: 'routine_id', type: 'string', isIndexed: true },
+        { name: 'exercise_id', type: 'string', isIndexed: true },
+        { name: 'sort_order', type: 'number' },
+        { name: 'target_sets', type: 'number' },
+        { name: 'target_reps', type: 'number' },
+        { name: 'default_weight_kg', type: 'number' },
+        { name: 'default_rest_seconds', type: 'number' },
+        { name: 'note', type: 'string', isOptional: true },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+
+    tableSchema({
+      name: 'sessions',
+      columns: [
+        { name: 'routine_id', type: 'string', isIndexed: true },
+        { name: 'name', type: 'string' },
+        { name: 'started_at', type: 'number' },
+        { name: 'ended_at', type: 'number', isOptional: true },
+        { name: 'status', type: 'string', isIndexed: true },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+
+    tableSchema({
+      name: 'workout_sets',
+      columns: [
+        { name: 'session_id', type: 'string', isIndexed: true },
+        { name: 'exercise_id', type: 'string', isIndexed: true },
+        { name: 'routine_exercise_id', type: 'string', isOptional: true, isIndexed: true },
+        { name: 'set_order', type: 'number' },
+        { name: 'set_type', type: 'string' },
+        { name: 'previous_weight_kg', type: 'number', isOptional: true },
+        { name: 'previous_reps', type: 'number', isOptional: true },
+        { name: 'weight_kg', type: 'number', isOptional: true },
+        { name: 'reps', type: 'number', isOptional: true },
+        { name: 'rpe', type: 'number', isOptional: true },
+        { name: 'rest_seconds', type: 'number' },
+        { name: 'completed', type: 'boolean' },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
       ],
     }),
   ],

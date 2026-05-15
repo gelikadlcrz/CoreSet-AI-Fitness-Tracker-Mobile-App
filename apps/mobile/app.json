@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.404.coreset",
+      "bundleIdentifier": "com.coreset.app",
       "infoPlist": {
         "NSCameraUsageDescription": "CoreSet uses the camera to analyse your exercise form and count repetitions on-device. No video is stored or transmitted.",
         "NSMicrophoneUsageDescription": "Microphone access is not used."

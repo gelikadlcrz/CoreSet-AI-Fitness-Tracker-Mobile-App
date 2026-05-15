@@ -1,15 +1,45 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Pressable, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
-import ExerciseCard from '@/src/features/workout/components/ExerciseCard';
-import WorkoutButton from '@/src/features/workout/components/WorkoutButton';
+import ExerciseCard from '../components/ExerciseCard';
+import WorkoutButton from '../components/WorkoutButton';
+import { useActiveWorkout } from '../hooks/useActiveWorkout';
 
-import { MOCK_WORKOUT } from '@/src/features/workout/mock/mockWorkout';
+import { COLORS } from '../../../../shared/theme';
+import { SPACING } from '../../../../shared/theme/spacing';
 
-import { COLORS } from '@/shared/theme';
-import { SPACING } from '@/shared/theme/spacing';
+function formatDate(value?: number) {
+  if (!value) return 'May 6, 2026';
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(value));
+}
+
+function formatDuration(startedAt?: number) {
+  if (!startedAt) return '1:15:41';
+  const total = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
 
 export default function WorkoutSessionScreen() {
+  const router = useRouter();
+  const { workout, loading, addSet, finish } = useActiveWorkout();
+
+  if (loading || !workout) {
+    return (
+      <View style={styles.loadingRoot}>
+        <ActivityIndicator color={COLORS.accent} />
+        <Text style={styles.loadingText}>Preparing workout...</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       style={styles.container}
@@ -17,167 +47,143 @@ export default function WorkoutSessionScreen() {
       showsVerticalScrollIndicator={false}
       contentInsetAdjustmentBehavior="automatic"
     >
-      <View style={styles.header}>
-        <Text style={styles.sessionLabel}>
-          Active Workout Session
-        </Text>
+      <Text style={styles.sessionLabel}>Active Workout Session</Text>
 
-        <View style={styles.mainHeaderRow}>
-          <Text style={styles.backButton}>‹</Text>
+      <View style={styles.panel}>
+        <View style={styles.topRow}>
+          <Pressable style={styles.backButton} onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={28} color={COLORS.text} />
+          </Pressable>
 
-          <Text style={styles.title}>Upper Body Day</Text>
+          <Text style={styles.panelTitle}>Workout Session</Text>
 
-          <WorkoutButton
-            title="Finish"
-            small
-            style={styles.finishButton}
-          />
+          <Pressable style={styles.finishButton} onPress={finish}>
+            <Text style={styles.finishText}>Finish</Text>
+          </Pressable>
         </View>
 
-        <View style={styles.metaContainer}>
-          <View style={styles.metaRow}>
-            <Ionicons
-              name="time-outline"
-              size={16}
-              color="#D0D0D0"
-            />
+        <Text style={styles.workoutTitle}>{workout.title}</Text>
 
-            <Text style={styles.metaText}>
-              May 6, 2026
-            </Text>
-          </View>
-
-          <View style={styles.metaRow}>
-            <Ionicons
-              name="calendar-outline"
-              size={16}
-              color="#D0D0D0"
-            />
-
-            <Text style={styles.metaText}>
-              1:15:41
-            </Text>
-          </View>
+        <View style={styles.metaRow}>
+          <Ionicons name="time-outline" size={14} color={COLORS.textSecondary} />
+          <Text style={styles.metaText}>{formatDate(workout.startedAt)}</Text>
         </View>
 
         <View style={styles.metaRow}>
-          <Ionicons
-            name="calendar-outline"
-            size={16}
-            color="#D0D0D0"
-          />
-
-          <Text style={styles.metaText}>
-            1:15:41
-          </Text>
+          <Ionicons name="calendar-outline" size={14} color={COLORS.textSecondary} />
+          <Text style={styles.metaText}>{formatDuration(workout.startedAt)}</Text>
         </View>
+
+        <View style={styles.exerciseList}>
+          {workout.exercises.map(exercise => (
+            <ExerciseCard
+              key={exercise.id}
+              title={exercise.name}
+              note={exercise.note}
+              sets={exercise.sets}
+              onAddSet={() => addSet(exercise.id)}
+            />
+          ))}
+        </View>
+
+        <WorkoutButton title="Add Exercises" style={styles.addExerciseButton} />
+        <WorkoutButton title="Cancel Workout" variant="danger" style={styles.cancelButton} />
       </View>
-
-      {MOCK_WORKOUT.map((exercise) => (
-        <ExerciseCard
-          key={exercise.id}
-          title={exercise.name}
-          note={exercise.note}
-          sets={exercise.sets}
-        />
-      ))}
-
-      <WorkoutButton
-        title="Add Exercises"
-        style={styles.addExerciseButton}
-      />
-
-      <WorkoutButton
-        title="Cancel Workout"
-        variant="danger"
-        style={styles.cancelButton}
-      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-    mainHeaderRow: {
-    flexDirection: 'row',
+  loadingRoot: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
-
-  metaContainer: {
-    marginTop: 18,
+  loadingText: {
+    color: COLORS.textMuted,
+    marginTop: 12,
   },
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
-
   content: {
     paddingHorizontal: SPACING.screenHorizontal,
-    paddingTop: 12,
-    paddingBottom: 60,
+    paddingTop: 28,
+    paddingBottom: 40,
   },
-
-  header: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 28,
-    paddingHorizontal: 22,
-    paddingTop: 18,
-    paddingBottom: 20,
-    marginBottom: 18,
-  },
-
   sessionLabel: {
-    color: '#7C7C7C',
-    fontSize: 13,
-    fontWeight: '500',
+    color: COLORS.textMuted,
+    fontSize: 18,
+    fontWeight: '600',
     marginBottom: 16,
   },
-
-  headerTopRow: {
+  panel: {
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 28,
+  },
+  topRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: COLORS.surfaceSecondary,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-
-  backButton: {
-    color: COLORS.text,
-    fontSize: 34,
-    lineHeight: 34,
-    marginLeft: -2,
-  },
-
-  finishButton: {
-    minWidth: 96,
-    height: 52,
-  },
-
-  title: {
+  panelTitle: {
     flex: 1,
-    marginHorizontal: 14,
+    textAlign: 'center',
     color: COLORS.text,
-    fontSize: 24,
-    fontWeight: '600',
-    letterSpacing: -0.5,
+    fontSize: 23,
+    fontWeight: '700',
   },
-
+  finishButton: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 22,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
+  },
+  finishText: {
+    color: '#111',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  workoutTitle: {
+    color: COLORS.text,
+    fontSize: 26,
+    fontWeight: '500',
+    marginTop: 4,
+  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 3,
   },
-
   metaText: {
-    marginLeft: 8,
     color: COLORS.textSecondary,
+    marginLeft: 6,
     fontSize: 14,
   },
-
-  addExerciseButton: {
+  exerciseList: {
     marginTop: 10,
   },
-
+  addExerciseButton: {
+    marginTop: 4,
+    height: 42,
+    borderRadius: 12,
+  },
   cancelButton: {
     marginTop: 14,
-    marginBottom: 24,
+    height: 42,
+    borderRadius: 12,
   },
 });

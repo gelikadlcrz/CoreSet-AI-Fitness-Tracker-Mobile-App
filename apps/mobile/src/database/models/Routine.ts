@@ -1,16 +1,13 @@
 import { Model } from '@nozbe/watermelondb';
 import { field } from '@nozbe/watermelondb/decorators';
 
-class Exercise extends Model {
-  static table = 'exercises';
+class Routine extends Model {
+  static table = 'routines';
 
-  @field('exercise_id') exerciseId!: string;
   @field('name') name!: string;
-  @field('muscle_group') muscleGroup!: string;
-  @field('equipment') equipment!: string;
   @field('notes') notes!: string;
   @field('created_at') createdAt!: number;
   @field('updated_at') updatedAt!: number;
 }
 
-export default Exercise;
+export default Routine;

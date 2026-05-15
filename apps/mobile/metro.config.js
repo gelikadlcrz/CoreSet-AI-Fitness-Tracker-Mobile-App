@@ -9,16 +9,16 @@ const config = getDefaultConfig(projectRoot);
 config.watchFolders = [workspaceRoot];
 
 config.resolver.nodeModulesPaths = [
-  path.resolve(workspaceRoot, 'node_modules'),
   path.resolve(projectRoot, 'node_modules'),
+  path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-config.resolver.disableHierarchicalLookup = true;
+// Important: do NOT set disableHierarchicalLookup to true.
 
-// Add tflite as a recognized asset extension
 config.resolver.assetExts = [
   ...config.resolver.assetExts,
   'tflite',
+  'task',
   'txt',
   'bin',
 ];
