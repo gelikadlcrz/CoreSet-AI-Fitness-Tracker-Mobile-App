@@ -1,41 +1,46 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Asset } from 'expo-asset';
+import { usePoseDetection } from 'react-native-mediapipe/src/poseDetection';
 
-const poseModel = require('../../assets/models/pose_landmarker_full.task');
+import {
+  Delegate,
+  RunningMode,
+} from 'react-native-mediapipe/src/shared/types';
+const MODEL_NAME = 'pose_landmarker_full.task';
 
 export default function MediaPipeTestScreen() {
-  const [status, setStatus] = useState('Loading model asset...');
+  const [status, setStatus] = useState('Creating pose detector...');
 
-  useEffect(() => {
-    async function loadAsset() {
-      try {
-        const asset = Asset.fromModule(poseModel);
-        await asset.downloadAsync();
+  const callbacks = useMemo(
+    () => ({
+      onResults: (result: any) => {
+        console.log('MediaPipe resultß:', result);
+        setStatus('Detector returned result.');
+      },
+      onError: (error: any) => {
+        console.log('MediaPipe test error:', error);
+        setStatus(`Error: ${String(error?.message ?? error)}`);
+      },
+    }),
+    []
+  );
 
-        setStatus(
-          `Asset loaded\nlocalUri: ${asset.localUri ?? 'none'}\nuri: ${asset.uri ?? 'none'}`
-        );
-
-        console.log('Pose model asset:', {
-          localUri: asset.localUri,
-          uri: asset.uri,
-          name: asset.name,
-          type: asset.type,
-        });
-      } catch (error: any) {
-        console.log('Pose model asset error:', error);
-        setStatus(`Asset error: ${String(error?.message ?? error)}`);
-      }
+  usePoseDetection(
+    callbacks,
+    RunningMode.LIVE_STREAM,
+    MODEL_NAME,
+    {
+      numPoses: 1,
+      delegate: Delegate.CPU,
     }
-
-    loadAsset();
-  }, []);
+  );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>MediaPipe Asset Test</Text>
+      <Text style={styles.title}>MediaPipe Hook Test</Text>
       <Text style={styles.text}>{status}</Text>
+      <Text style={styles.smallText}>Model: {MODEL_NAME}</Text>
+      <Text style={styles.smallText}>Camera not attached yet.</Text>
     </View>
   );
 }
@@ -55,8 +60,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   text: {
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  smallText: {
     color: '#aaa',
     textAlign: 'center',
-    lineHeight: 22,
+    fontSize: 12,
+    marginTop: 4,
   },
 });
