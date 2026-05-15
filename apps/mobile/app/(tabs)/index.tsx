@@ -34,6 +34,15 @@ export default function DashboardScreen() {
           START WORKOUT
         </Text>
       </Pressable>
+      
+      <Pressable
+        style={styles.button}
+        onPress={() => router.push('/mediapipe-test')}
+      >
+        <Text style={styles.buttonText}>
+          MEDIAPIPE TEST
+        </Text>
+      </Pressable>
 
       <View style={styles.infoSection}>
         <Text style={styles.sectionTitle}>
