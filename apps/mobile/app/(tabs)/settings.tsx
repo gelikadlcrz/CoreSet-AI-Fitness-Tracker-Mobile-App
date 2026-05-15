@@ -27,12 +27,12 @@ import {
   formatRestTime,
   getOrCreateSettings,
   logoutLocalUser,
-  savePreferencesOnly,
   saveSettings,
   signInLocalUser,
   signUpLocalUser,
 } from '../../src/features/settings/services/settingsService';
 
+import { useAppSettings } from '../../src/features/settings/hooks/useAppSettings';
 import type { SettingsDraft } from '../../src/features/settings/types/settings.types';
 
 type ChoiceConfig = {
@@ -80,7 +80,7 @@ const LIGHT_THEME: ThemePalette = {
   text: '#111111',
   textSecondary: '#4F4F4F',
   textMuted: '#767676',
-  accent: COLORS.accent,
+  accent: '#5E6F00',
   border: '#C9CABC',
   divider: '#E1E1D8',
   input: '#F0F1E8',
@@ -255,7 +255,7 @@ function SaveConfirmationModal({
               <Text style={[styles.cancelSaveText, { color: theme.text }]}>Cancel</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.confirmSaveButton} onPress={onConfirm}>
+            <TouchableOpacity style={[styles.confirmSaveButton, { backgroundColor: theme.accent }]} onPress={onConfirm}>
               <Text style={styles.confirmSaveText}>Save</Text>
             </TouchableOpacity>
           </View>
@@ -528,7 +528,13 @@ export default function SettingsScreen() {
   const [authEmail, setAuthEmail] = useState('');
   const [authName, setAuthName] = useState('');
 
-  const theme = draft.preferences.theme === 'light' ? LIGHT_THEME : DARK_THEME;
+  const {
+    settings: globalSettings,
+    theme,
+    refreshSettings,
+    setSettingsLocally,
+    applyPreferencesImmediately,
+  } = useAppSettings();
 
   useEffect(() => {
     getOrCreateSettings()
@@ -536,11 +542,18 @@ export default function SettingsScreen() {
         setDraft(settings);
         setAuthEmail(settings.profile.email || '');
         setAuthName(settings.profile.displayName || '');
+        setSettingsLocally(settings);
       })
       .catch(error => {
         console.log('Settings load error', error);
       });
-  }, []);
+  }, [setSettingsLocally]);
+
+  useEffect(() => {
+    setDraft(globalSettings);
+    setAuthEmail(globalSettings.profile.email || '');
+    setAuthName(globalSettings.profile.displayName || '');
+  }, [globalSettings]);
 
   const updateDraft = (updater: (next: SettingsDraft) => void) => {
     setDraft(current => {
@@ -555,7 +568,7 @@ export default function SettingsScreen() {
       const next = cloneDraft(current);
       updater(next);
       triggerHaptic(next.preferences.hapticsEnabled);
-      savePreferencesOnly(next.preferences).catch(error => console.log('Immediate preference save error', error));
+      applyPreferencesImmediately(next.preferences).catch(error => console.log('Immediate preference save error', error));
       return next;
     });
   };
@@ -585,12 +598,16 @@ export default function SettingsScreen() {
   const handleSignIn = async () => {
     const next = await signInLocalUser({ email: authEmail, displayName: authName });
     setDraft(next);
+    setSettingsLocally(next);
+    await refreshSettings();
     triggerHaptic(next.preferences.hapticsEnabled);
   };
 
   const handleSignUp = async () => {
     const next = await signUpLocalUser({ email: authEmail, displayName: authName });
     setDraft(next);
+    setSettingsLocally(next);
+    await refreshSettings();
     triggerHaptic(next.preferences.hapticsEnabled);
   };
 
@@ -603,6 +620,8 @@ export default function SettingsScreen() {
         onPress: async () => {
           const next = await logoutLocalUser();
           setDraft(next);
+          setSettingsLocally(next);
+          await refreshSettings();
         },
       },
     ]);
@@ -614,6 +633,8 @@ export default function SettingsScreen() {
 
     try {
       await saveSettings(draft);
+      setSettingsLocally(draft);
+      await refreshSettings();
       triggerHaptic(draft.preferences.hapticsEnabled);
       setSaveLabel('Saved');
       setTimeout(() => setSaveLabel('Save'), 1200);
@@ -633,7 +654,7 @@ export default function SettingsScreen() {
         <View style={styles.header}>
           <Text style={[styles.title, { color: theme.text }]}>Settings</Text>
 
-          <TouchableOpacity style={styles.saveButton} onPress={() => setSaveConfirmVisible(true)}>
+          <TouchableOpacity style={[styles.saveButton, { backgroundColor: theme.accent }]} onPress={() => setSaveConfirmVisible(true)}>
             <Text style={styles.saveText}>{saveLabel}</Text>
           </TouchableOpacity>
         </View>
@@ -953,10 +974,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 28,
+    marginBottom: 22,
   },
   title: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: '900',
   },
   saveButton: {
@@ -967,14 +988,14 @@ const styles = StyleSheet.create({
   },
   saveText: {
     color: '#000000',
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '900',
   },
   sectionWrap: {
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '800',
     marginBottom: 10,
   },
@@ -985,7 +1006,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   row: {
-    minHeight: 64,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -996,7 +1017,7 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     flex: 1,
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '600',
     paddingRight: 12,
   },
@@ -1009,7 +1030,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   rowValue: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '800',
   },
   profileCard: {
@@ -1034,7 +1055,7 @@ const styles = StyleSheet.create({
     marginLeft: 14,
   },
   profileName: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '900',
   },
   profileGoal: {
@@ -1070,7 +1091,7 @@ const styles = StyleSheet.create({
   },
   signedOutTitle: {
     marginTop: 12,
-    fontSize: 21,
+    fontSize: 19,
     fontWeight: '900',
     textAlign: 'center',
   },
@@ -1080,7 +1101,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 16,
+    fontSize: 15,
   },
   authActions: {
     flexDirection: 'row',
@@ -1130,11 +1151,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sliderName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
   sliderPercent: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
   },
   sliderTrack: {
@@ -1161,7 +1182,7 @@ const styles = StyleSheet.create({
   },
   deleteText: {
     color: '#FFFFFF',
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '900',
   },
   warningText: {
@@ -1187,7 +1208,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   modalTitle: {
-    fontSize: 21,
+    fontSize: 19,
     fontWeight: '900',
   },
   modalClose: {
@@ -1232,7 +1253,7 @@ const styles = StyleSheet.create({
   },
   confirmTitle: {
     marginTop: 12,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
   },
   confirmMessage: {

@@ -1,7 +1,10 @@
 import { Q } from '@nozbe/watermelondb';
 
 import { database } from '../../../database';
-import type { WorkoutSessionVM } from '../types/workoutSession.types';
+import type {
+  ExercisePickerItem,
+  WorkoutSessionVM,
+} from '../types/workoutSession.types';
 
 const now = () => Date.now();
 
@@ -9,60 +12,99 @@ function secondsSince(timestamp: number) {
   return Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
 }
 
-async function getOrCreateExercise(data: {
+function isLiveRecordQuery() {
+  return Q.or(Q.where('deleted_at', Q.eq(null)), Q.where('deleted_at', 0));
+}
+
+async function getCurrentRemoteUserId() {
+  const profiles = database.collections.get('user_profiles');
+  const [profile] = await profiles.query().fetch();
+  const remoteUserId = (profile as any)?.remoteUserId || (profile as any)?.userId || '';
+  return remoteUserId || 'local-demo-user';
+}
+
+async function findExerciseByExternalId(exerciseId: string) {
+  const exercises = database.collections.get('exercises');
+  const [existing] = await exercises.query(Q.where('exercise_id', exerciseId)).fetch();
+  return existing as any | undefined;
+}
+
+async function ensureDemoExercise(data: {
   exerciseId: string;
   name: string;
   muscleGroup: string;
   equipment: string;
-  notes?: string;
+  primaryMuscle?: string;
+  isAiTracked?: boolean;
 }) {
-  const exercises = database.collections.get('exercises');
-  const existing = await exercises.query(Q.where('exercise_id', data.exerciseId)).fetch();
-  if (existing[0]) return existing[0] as any;
+  const existing = await findExerciseByExternalId(data.exerciseId);
+  if (existing) return existing;
 
   const timestamp = now();
-  return exercises.create((record: any) => {
+  return database.collections.get('exercises').create((record: any) => {
     record.exerciseId = data.exerciseId;
     record.name = data.name;
     record.muscleGroup = data.muscleGroup;
     record.equipment = data.equipment;
-    record.notes = data.notes || '';
+    record.notes = '';
+    record.primaryMuscle = data.primaryMuscle || data.muscleGroup;
+    record.secondaryMusclesJson = '[]';
+    record.equipmentType = data.equipment;
+    record.movementPattern = '';
+    record.isAiTracked = !!data.isAiTracked;
+    record.aiExerciseClass = data.isAiTracked ? data.exerciseId.replace('demo-', '') : '';
+    record.isBodyweight = data.equipment === 'Bodyweight';
+    record.isCustom = true;
+    record.thumbnailUrl = '';
+    record.demoVideoUrl = '';
+    record.remoteCreatedByUser = '';
+    record.deletedAt = 0;
     record.createdAt = timestamp;
     record.updatedAt = timestamp;
-  });
+  }) as any;
 }
 
 async function seedDemoWorkout() {
+  const timestamp = now();
+  const remoteUserId = await getCurrentRemoteUserId();
+
   const routines = database.collections.get('routines');
   const routineExercises = database.collections.get('routine_exercises');
   const sessions = database.collections.get('sessions');
   const workoutSets = database.collections.get('workout_sets');
-  const timestamp = now();
 
-  const bench = await getOrCreateExercise({
+  const bench = await ensureDemoExercise({
     exerciseId: 'demo-bench-press-barbell',
     name: 'Bench Press',
     muscleGroup: 'Chest',
     equipment: 'Barbell',
+    primaryMuscle: 'Chest',
   });
 
-  const lateralRaise = await getOrCreateExercise({
+  const lateralRaise = await ensureDemoExercise({
     exerciseId: 'demo-lateral-raise-dumbbell',
     name: 'Lateral Raise',
     muscleGroup: 'Shoulders',
     equipment: 'Dumbbell',
+    primaryMuscle: 'Shoulders',
   });
 
-  const squat = await getOrCreateExercise({
+  const squat = await ensureDemoExercise({
     exerciseId: 'demo-squat-barbell',
     name: 'Squat',
     muscleGroup: 'Legs',
     equipment: 'Barbell',
+    primaryMuscle: 'Quads',
+    isAiTracked: true,
   });
 
   const routine = await routines.create((record: any) => {
+    record.remoteRoutineId = '';
+    record.remoteUserId = remoteUserId;
     record.name = 'Upper Body Day';
-    record.notes = 'Demo routine for workout tracking';
+    record.notes = 'Local demo routine for workout tracking';
+    record.lastUsedAt = timestamp;
+    record.deletedAt = 0;
     record.createdAt = timestamp;
     record.updatedAt = timestamp;
   }) as any;
@@ -74,28 +116,41 @@ async function seedDemoWorkout() {
   ];
 
   const routineExerciseRecords: any[] = [];
+
   for (const item of routineExerciseInputs) {
     const routineExercise = await routineExercises.create((record: any) => {
+      record.remoteRoutineExerciseId = '';
       record.routineId = routine.id;
       record.exerciseId = item.exercise.id;
       record.sortOrder = item.sortOrder;
       record.targetSets = item.sets;
       record.targetReps = item.reps;
+      record.targetRepsMin = Math.max(1, item.reps - 2);
+      record.targetRepsMax = item.reps + 2;
+      record.targetRpe = 8;
       record.defaultWeightKg = item.weight;
       record.defaultRestSeconds = item.rest;
       record.note = item.note;
+      record.deletedAt = 0;
       record.createdAt = timestamp;
       record.updatedAt = timestamp;
     }) as any;
+
     routineExerciseRecords.push({ ...item, routineExercise });
   }
 
   const session = await sessions.create((record: any) => {
+    record.remoteSessionId = '';
+    record.remoteUserId = remoteUserId;
     record.routineId = routine.id;
     record.name = routine.name;
     record.startedAt = timestamp - 4541000;
     record.endedAt = 0;
     record.status = 'active';
+    record.totalReps = 0;
+    record.totalDurationSeconds = 0;
+    record.notes = '';
+    record.deletedAt = 0;
     record.createdAt = timestamp;
     record.updatedAt = timestamp;
   }) as any;
@@ -112,11 +167,15 @@ async function seedDemoWorkout() {
 
   for (const input of setInputs) {
     await workoutSets.create((record: any) => {
+      record.remoteSetId = '';
       record.sessionId = session.id;
       record.exerciseId = input.re.exercise.id;
       record.routineExerciseId = input.re.routineExercise.id;
       record.setOrder = input.order;
       record.setType = input.type;
+      record.setNumber = input.order;
+      record.isWarmup = input.type === 'warmup';
+      record.logMode = 'manual';
       record.previousWeightKg = input.prevW;
       record.previousReps = input.prevR;
       record.weightKg = input.w;
@@ -124,6 +183,10 @@ async function seedDemoWorkout() {
       record.rpe = input.rpe;
       record.restSeconds = input.rest;
       record.completed = input.done;
+      record.modelConfidenceAvg = 0;
+      record.totalDisplacementM = 0;
+      record.notes = '';
+      record.deletedAt = 0;
       record.createdAt = timestamp;
       record.updatedAt = timestamp;
     });
@@ -140,7 +203,11 @@ async function buildSessionViewModel(session: any): Promise<WorkoutSessionVM> {
 
   const routine = await routines.find(session.routineId) as any;
   const routineExerciseRecords = await routineExercises
-    .query(Q.where('routine_id', routine.id), Q.sortBy('sort_order', Q.asc))
+    .query(
+      Q.where('routine_id', routine.id),
+      isLiveRecordQuery(),
+      Q.sortBy('sort_order', Q.asc),
+    )
     .fetch();
 
   const exerciseCards = [];
@@ -151,12 +218,15 @@ async function buildSessionViewModel(session: any): Promise<WorkoutSessionVM> {
       .query(
         Q.where('session_id', session.id),
         Q.where('routine_exercise_id', routineExercise.id),
+        isLiveRecordQuery(),
         Q.sortBy('set_order', Q.asc),
       )
       .fetch();
 
     exerciseCards.push({
       id: routineExercise.id,
+      exerciseId: exercise.id,
+      routineExerciseId: routineExercise.id,
       name: `${exercise.name}${exercise.equipment ? ` (${exercise.equipment})` : ''}`,
       equipment: exercise.equipment,
       note: routineExercise.note || '',
@@ -177,6 +247,7 @@ async function buildSessionViewModel(session: any): Promise<WorkoutSessionVM> {
 
   return {
     id: session.id,
+    routineId: routine.id,
     routineName: routine.name,
     startedAt: session.startedAt,
     elapsedSeconds: secondsSince(session.startedAt),
@@ -186,16 +257,228 @@ async function buildSessionViewModel(session: any): Promise<WorkoutSessionVM> {
 
 export async function getOrCreateActiveWorkoutSession(): Promise<WorkoutSessionVM> {
   const sessions = database.collections.get('sessions');
-  let activeSessions = await sessions.query(Q.where('status', 'active')).fetch();
+  let activeSessions = await sessions
+    .query(Q.where('status', 'active'), isLiveRecordQuery())
+    .fetch();
 
   if (!activeSessions[0]) {
     await database.write(async () => {
       await seedDemoWorkout();
     });
-    activeSessions = await sessions.query(Q.where('status', 'active')).fetch();
+
+    activeSessions = await sessions
+      .query(Q.where('status', 'active'), isLiveRecordQuery())
+      .fetch();
   }
 
   return buildSessionViewModel(activeSessions[0] as any);
+}
+
+export async function listAvailableExercises(): Promise<ExercisePickerItem[]> {
+  const exercises = await database.collections
+    .get('exercises')
+    .query(isLiveRecordQuery(), Q.sortBy('name', Q.asc))
+    .fetch();
+
+  return (exercises as any[]).map(exercise => ({
+    id: exercise.id,
+    name: exercise.name,
+    equipment: exercise.equipment || exercise.equipmentType || '',
+    primaryMuscle: exercise.primaryMuscle || exercise.muscleGroup || '',
+    isAiTracked: !!exercise.isAiTracked,
+  }));
+}
+
+export async function toggleSetCompleted(setId: string) {
+  await database.write(async () => {
+    const set = await database.collections.get('workout_sets').find(setId) as any;
+    const timestamp = now();
+
+    await set.update((record: any) => {
+      record.completed = !record.completed;
+      record.updatedAt = timestamp;
+    });
+  });
+}
+
+export async function addSetToRoutineExercise(sessionId: string, routineExerciseId: string) {
+  await database.write(async () => {
+    const timestamp = now();
+    const routineExercise = await database.collections
+      .get('routine_exercises')
+      .find(routineExerciseId) as any;
+    const setsCollection = database.collections.get('workout_sets');
+    const existing = await setsCollection
+      .query(
+        Q.where('session_id', sessionId),
+        Q.where('routine_exercise_id', routineExerciseId),
+        isLiveRecordQuery(),
+      )
+      .fetch();
+
+    await setsCollection.create((record: any) => {
+      record.remoteSetId = '';
+      record.sessionId = sessionId;
+      record.exerciseId = routineExercise.exerciseId;
+      record.routineExerciseId = routineExerciseId;
+      record.setOrder = existing.length + 1;
+      record.setType = 'normal';
+      record.setNumber = existing.length + 1;
+      record.isWarmup = false;
+      record.logMode = 'manual';
+      record.previousWeightKg = 0;
+      record.previousReps = 0;
+      record.weightKg = routineExercise.defaultWeightKg || 0;
+      record.reps = routineExercise.targetReps || 0;
+      record.rpe = routineExercise.targetRpe || 0;
+      record.restSeconds = routineExercise.defaultRestSeconds || 90;
+      record.completed = false;
+      record.modelConfidenceAvg = 0;
+      record.totalDisplacementM = 0;
+      record.notes = '';
+      record.deletedAt = 0;
+      record.createdAt = timestamp;
+      record.updatedAt = timestamp;
+    });
+  });
+}
+
+export async function addExerciseToActiveSession(sessionId: string, routineId: string, exerciseId: string) {
+  await database.write(async () => {
+    const timestamp = now();
+    const routineExercises = database.collections.get('routine_exercises');
+    const workoutSets = database.collections.get('workout_sets');
+    const existingRoutineExercises = await routineExercises
+      .query(Q.where('routine_id', routineId), isLiveRecordQuery())
+      .fetch();
+
+    const routineExercise = await routineExercises.create((record: any) => {
+      record.remoteRoutineExerciseId = '';
+      record.routineId = routineId;
+      record.exerciseId = exerciseId;
+      record.sortOrder = existingRoutineExercises.length + 1;
+      record.targetSets = 3;
+      record.targetReps = 10;
+      record.targetRepsMin = 8;
+      record.targetRepsMax = 12;
+      record.targetRpe = 8;
+      record.defaultWeightKg = 0;
+      record.defaultRestSeconds = 90;
+      record.note = '';
+      record.deletedAt = 0;
+      record.createdAt = timestamp;
+      record.updatedAt = timestamp;
+    }) as any;
+
+    for (let index = 0; index < 3; index += 1) {
+      await workoutSets.create((record: any) => {
+        record.remoteSetId = '';
+        record.sessionId = sessionId;
+        record.exerciseId = exerciseId;
+        record.routineExerciseId = routineExercise.id;
+        record.setOrder = index + 1;
+        record.setType = 'normal';
+        record.setNumber = index + 1;
+        record.isWarmup = false;
+        record.logMode = 'manual';
+        record.previousWeightKg = 0;
+        record.previousReps = 0;
+        record.weightKg = 0;
+        record.reps = 0;
+        record.rpe = 0;
+        record.restSeconds = 90;
+        record.completed = false;
+        record.modelConfidenceAvg = 0;
+        record.totalDisplacementM = 0;
+        record.notes = '';
+        record.deletedAt = 0;
+        record.createdAt = timestamp;
+        record.updatedAt = timestamp;
+      });
+    }
+  });
+}
+
+export async function removeExerciseFromActiveWorkout(sessionId: string, routineExerciseId: string) {
+  await database.write(async () => {
+    const timestamp = now();
+    const routineExercise = await database.collections
+      .get('routine_exercises')
+      .find(routineExerciseId) as any;
+    const sets = await database.collections
+      .get('workout_sets')
+      .query(
+        Q.where('session_id', sessionId),
+        Q.where('routine_exercise_id', routineExerciseId),
+        isLiveRecordQuery(),
+      )
+      .fetch();
+
+    await routineExercise.update((record: any) => {
+      record.deletedAt = timestamp;
+      record.updatedAt = timestamp;
+    });
+
+    for (const set of sets as any[]) {
+      await set.update((record: any) => {
+        record.deletedAt = timestamp;
+        record.updatedAt = timestamp;
+      });
+    }
+  });
+}
+
+export async function updateRoutineExerciseNote(routineExerciseId: string, note: string) {
+  await database.write(async () => {
+    const routineExercise = await database.collections
+      .get('routine_exercises')
+      .find(routineExerciseId) as any;
+    const timestamp = now();
+
+    await routineExercise.update((record: any) => {
+      record.note = note;
+      record.updatedAt = timestamp;
+    });
+  });
+}
+
+export async function finishActiveWorkout(sessionId: string) {
+  await database.write(async () => {
+    const session = await database.collections.get('sessions').find(sessionId) as any;
+    const timestamp = now();
+
+    await session.update((record: any) => {
+      record.status = 'completed';
+      record.endedAt = timestamp;
+      record.totalDurationSeconds = secondsSince(record.startedAt);
+      record.updatedAt = timestamp;
+    });
+  });
+}
+
+export async function cancelActiveWorkout(sessionId: string) {
+  await database.write(async () => {
+    const session = await database.collections.get('sessions').find(sessionId) as any;
+    const sets = await database.collections
+      .get('workout_sets')
+      .query(Q.where('session_id', sessionId), isLiveRecordQuery())
+      .fetch();
+    const timestamp = now();
+
+    await session.update((record: any) => {
+      record.status = 'cancelled';
+      record.endedAt = timestamp;
+      record.deletedAt = timestamp;
+      record.updatedAt = timestamp;
+    });
+
+    for (const set of sets as any[]) {
+      await set.update((record: any) => {
+        record.deletedAt = timestamp;
+        record.updatedAt = timestamp;
+      });
+    }
+  });
 }
 
 export function formatDuration(seconds: number) {

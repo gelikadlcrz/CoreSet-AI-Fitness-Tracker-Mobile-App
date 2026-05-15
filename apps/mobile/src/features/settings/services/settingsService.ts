@@ -3,6 +3,44 @@ import type { SettingsDraft } from '../types/settings.types';
 
 const now = () => Date.now();
 
+
+const GUEST_USER_IDS = new Set(['guest', 'local-demo-user', '']);
+
+async function adoptLocalRecordsForUser(remoteUserId?: string) {
+  if (!remoteUserId || GUEST_USER_IDS.has(remoteUserId)) return;
+
+  const timestamp = now();
+  const userOwnedTables = ['routines', 'sessions', 'body_stats', 'exports'];
+
+  await database.write(async () => {
+    for (const tableName of userOwnedTables) {
+      const collection = database.collections.get(tableName);
+      const records = await collection.query().fetch();
+
+      for (const item of records as any[]) {
+        const currentRemoteUserId = item.remoteUserId || '';
+        const shouldAdopt = !currentRemoteUserId || GUEST_USER_IDS.has(currentRemoteUserId);
+
+        if (shouldAdopt) {
+          await item.update((record: any) => {
+            record.remoteUserId = remoteUserId;
+            record.updatedAt = timestamp;
+          });
+        }
+      }
+    }
+  });
+}
+
+export function canSyncUserData(settings: SettingsDraft) {
+  const userId = settings.profile.userId || '';
+  return settings.profile.isLoggedIn && !!userId && !GUEST_USER_IDS.has(userId);
+}
+
+export function canPullPublicExerciseLibrary() {
+  return true;
+}
+
 export const DEFAULT_SETTINGS: SettingsDraft = {
   profile: {
     isLoggedIn: false,
@@ -237,6 +275,7 @@ export async function signInLocalUser(input?: { email?: string; displayName?: st
   draft.profile.authId = draft.profile.authId || 'local-demo-auth';
   draft.profile.userId = draft.profile.userId || 'local-demo-user';
   await saveSettings(draft);
+  await adoptLocalRecordsForUser(draft.profile.userId);
   return draft;
 }
 
@@ -249,6 +288,7 @@ export async function signUpLocalUser(input?: { email?: string; displayName?: st
   draft.profile.authId = `local-auth-${timestamp}`;
   draft.profile.userId = `local-user-${timestamp}`;
   await saveSettings(draft);
+  await adoptLocalRecordsForUser(draft.profile.userId);
   return draft;
 }
 

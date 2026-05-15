@@ -13,6 +13,8 @@ export type WorkoutSetVM = {
 
 export type WorkoutExerciseVM = {
   id: string;
+  exerciseId: string;
+  routineExerciseId: string;
   name: string;
   equipment?: string;
   note?: string;
@@ -21,8 +23,17 @@ export type WorkoutExerciseVM = {
 
 export type WorkoutSessionVM = {
   id: string;
+  routineId: string;
   routineName: string;
   startedAt: number;
   elapsedSeconds: number;
   exercises: WorkoutExerciseVM[];
+};
+
+export type ExercisePickerItem = {
+  id: string;
+  name: string;
+  equipment?: string;
+  primaryMuscle?: string;
+  isAiTracked?: boolean;
 };

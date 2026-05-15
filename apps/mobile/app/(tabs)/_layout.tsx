@@ -2,34 +2,45 @@ import { Tabs } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { COLORS } from '../../shared/theme';
+import { useAppSettings } from '../../src/features/settings/hooks/useAppSettings';
+import type { ThemePalette } from '../../src/features/settings/hooks/useAppSettings';
 
 function TabIcon({
   focused,
   color,
   icon,
+  theme,
 }: {
   focused: boolean;
   color: string;
   icon: keyof typeof Ionicons.glyphMap;
+  theme: ThemePalette;
 }) {
   return (
-    <View style={[styles.iconWrap, focused && styles.iconWrapFocused]}>
+    <View style={[styles.iconWrap, focused && { backgroundColor: theme.accentMuted }]}>
       <Ionicons name={icon} size={25} color={color} />
     </View>
   );
 }
 
 export default function TabsLayout() {
+  const { theme } = useAppSettings();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
-        tabBarActiveTintColor: COLORS.accent,
-        tabBarInactiveTintColor: COLORS.textMuted,
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.textMuted,
         tabBarHideOnKeyboard: true,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            backgroundColor: theme.surface,
+            borderTopColor: theme.divider,
+          },
+        ],
         tabBarItemStyle: styles.tabBarItem,
       }}
     >
@@ -37,28 +48,39 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} icon="home" />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon focused={focused} color={color} icon="home" theme={theme} />
+          ),
         }}
       />
+
       <Tabs.Screen
         name="library"
         options={{
           title: 'Library',
-          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} icon="barbell" />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon focused={focused} color={color} icon="barbell" theme={theme} />
+          ),
         }}
       />
+
       <Tabs.Screen
         name="analytics"
         options={{
           title: 'Analytics',
-          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} icon="stats-chart" />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon focused={focused} color={color} icon="stats-chart" theme={theme} />
+          ),
         }}
       />
+
       <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ color, focused }) => <TabIcon focused={focused} color={color} icon="settings" />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon focused={focused} color={color} icon="settings" theme={theme} />
+          ),
         }}
       />
     </Tabs>
@@ -71,12 +93,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 74,
-    paddingTop: 8,
-    paddingBottom: 12,
-    backgroundColor: COLORS.surface,
+    height: 68,
+    paddingTop: 7,
+    paddingBottom: 8,
     borderTopWidth: 1,
-    borderTopColor: COLORS.divider,
     borderRadius: 0,
     elevation: 0,
     shadowOpacity: 0,
@@ -86,13 +106,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   iconWrap: {
-    width: 48,
-    height: 42,
-    borderRadius: 16,
+    width: 46,
+    height: 40,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  iconWrapFocused: {
-    backgroundColor: COLORS.accent + '18',
   },
 });
