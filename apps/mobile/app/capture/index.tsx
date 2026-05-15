@@ -8,7 +8,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import CameraView from '../../features/capture/camera/CameraView';
+import CameraView from '../../src/features/capture/camera/CameraView';
 
 export default function CaptureScreen() {
   return (

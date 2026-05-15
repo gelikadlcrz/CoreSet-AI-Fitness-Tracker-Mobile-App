@@ -10,11 +10,11 @@ import {
 
 import { COLORS } from '../../shared/theme';
 
-import SettingsSection from '../../features/settings/components/SettingsSection';
-import SettingsRow from '../../features/settings/components/SettingsRow';
-import TogglePill from '../../features/settings/components/TogglePill';
-import ProfileCard from '../../features/settings/components/ProfileCard';
-import DeleteConfirmationModal from '../../features/settings/components/DeleteConfirmationModal';
+import SettingsSection from '../../src/features/settings/components/SettingsSection';
+import SettingsRow from '../../src/features/settings/components/SettingsRow';
+import TogglePill from '../../src/features/settings/components/TogglePill';
+import ProfileCard from '../../src/features/settings/components/ProfileCard';
+import DeleteConfirmationModal from '../../src/features/settings/components/DeleteConfirmationModal';
 
 export default function SettingsScreen() {
   const [weightUnit, setWeightUnit] =
