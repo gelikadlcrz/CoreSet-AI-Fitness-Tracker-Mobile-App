@@ -12,6 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { COLORS } from '../../../../shared/theme';
 import { pullExercises } from '../../../services/sync/pullExercises';
+import { getOrCreateSettings } from '../../settings/services/settingsService';
+import type { WeightUnit } from '../../settings/types/settings.types';
 
 import {
   formatDuration,
@@ -68,19 +70,36 @@ function badgeStyle(type: string) {
   return undefined;
 }
 
+function formatWeight(weightKg?: number, unit: WeightUnit = 'kg') {
+  if (weightKg === undefined || weightKg === null || weightKg === 0) return '-';
+
+  if (unit === 'lbs') {
+    return String(Math.round(weightKg * 2.20462));
+  }
+
+  return String(weightKg);
+}
+
 function valueOrDash(value?: number) {
   if (value === undefined || value === null || value === 0) return '-';
   return String(value);
 }
 
-function previousLabel(set: WorkoutSetVM) {
+function previousLabel(set: WorkoutSetVM, unit: WeightUnit) {
   if (!set.previousWeightKg || !set.previousReps) return '-';
 
+  const weight = formatWeight(set.previousWeightKg, unit);
   const suffix = set.type === 'warmup' ? ' (W)' : '';
-  return `${set.previousWeightKg} kg x ${set.previousReps}${suffix}`;
+  return `${weight} ${unit} x ${set.previousReps}${suffix}`;
 }
 
-function ExercisePanel({ exercise }: { exercise: WorkoutExerciseVM }) {
+function ExercisePanel({
+  exercise,
+  weightUnit,
+}: {
+  exercise: WorkoutExerciseVM;
+  weightUnit: WeightUnit;
+}) {
   const restSeconds = exercise.sets[0]?.restSeconds || 180;
 
   return (
@@ -110,10 +129,8 @@ function ExercisePanel({ exercise }: { exercise: WorkoutExerciseVM }) {
 
         <View style={styles.tableHeader}>
           <Text style={[styles.headerText, styles.setColumn]}>Set</Text>
-          <Text style={[styles.headerText, styles.previousColumn]}>
-            Previous
-          </Text>
-          <Text style={[styles.headerText, styles.numericColumn]}>kg</Text>
+          <Text style={[styles.headerText, styles.previousColumn]}>Previous</Text>
+          <Text style={[styles.headerText, styles.numericColumn]}>{weightUnit}</Text>
           <Text style={[styles.headerText, styles.numericColumn]}>Reps</Text>
           <Text style={[styles.headerText, styles.numericColumn]}>RPE</Text>
           <View style={styles.checkColumn} />
@@ -126,31 +143,19 @@ function ExercisePanel({ exercise }: { exercise: WorkoutExerciseVM }) {
                 <Text style={styles.setBadgeText}>{setBadge(set)}</Text>
               </View>
 
-              <Text
-                style={[styles.setText, styles.previousColumn]}
-                numberOfLines={2}
-              >
-                {previousLabel(set)}
+              <Text style={[styles.setText, styles.previousColumn]} numberOfLines={2}>
+                {previousLabel(set, weightUnit)}
               </Text>
 
-              <Text
-                style={[styles.inputPill, styles.numericColumn]}
-                numberOfLines={1}
-              >
-                {valueOrDash(set.weightKg)}
+              <Text style={[styles.inputPill, styles.numericColumn]} numberOfLines={1}>
+                {formatWeight(set.weightKg, weightUnit)}
               </Text>
 
-              <Text
-                style={[styles.inputPill, styles.numericColumn]}
-                numberOfLines={1}
-              >
+              <Text style={[styles.inputPill, styles.numericColumn]} numberOfLines={1}>
                 {valueOrDash(set.reps)}
               </Text>
 
-              <Text
-                style={[styles.inputPill, styles.numericColumn]}
-                numberOfLines={1}
-              >
+              <Text style={[styles.inputPill, styles.numericColumn]} numberOfLines={1}>
                 {valueOrDash(set.rpe)}
               </Text>
 
@@ -165,18 +170,14 @@ function ExercisePanel({ exercise }: { exercise: WorkoutExerciseVM }) {
 
             <View style={styles.restLineRow}>
               <View style={styles.restLine} />
-              <Text style={styles.restText}>
-                {formatSetRest(set.restSeconds)}
-              </Text>
+              <Text style={styles.restText}>{formatSetRest(set.restSeconds)}</Text>
               <View style={styles.restLine} />
             </View>
           </View>
         ))}
 
         <TouchableOpacity style={styles.addSetButton}>
-          <Text style={styles.addSetText}>
-            + Add Set ({formatSetRest(restSeconds)})
-          </Text>
+          <Text style={styles.addSetText}>+ Add Set ({formatSetRest(restSeconds)})</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -185,6 +186,7 @@ function ExercisePanel({ exercise }: { exercise: WorkoutExerciseVM }) {
 
 export default function ActiveWorkoutSessionScreen() {
   const [session, setSession] = useState<WorkoutSessionVM | null>(null);
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>('kg');
 
   useEffect(() => {
     let mounted = true;
@@ -197,9 +199,13 @@ export default function ActiveWorkoutSessionScreen() {
       }
 
       try {
-        const activeSession = await getOrCreateActiveWorkoutSession();
+        const [settings, activeSession] = await Promise.all([
+          getOrCreateSettings(),
+          getOrCreateActiveWorkoutSession(),
+        ]);
 
         if (mounted) {
+          setWeightUnit(settings.preferences.weightUnit);
           setSession(activeSession);
         }
       } catch (error) {
@@ -256,13 +262,11 @@ export default function ActiveWorkoutSessionScreen() {
 
         <View style={styles.metaRow}>
           <Ionicons name="calendar-outline" size={15} color={UI.textSecondary} />
-          <Text style={styles.metaText}>
-            {formatDuration(session.elapsedSeconds)}
-          </Text>
+          <Text style={styles.metaText}>{formatDuration(session.elapsedSeconds)}</Text>
         </View>
 
         {session.exercises.map(exercise => (
-          <ExercisePanel key={exercise.id} exercise={exercise} />
+          <ExercisePanel key={exercise.id} exercise={exercise} weightUnit={weightUnit} />
         ))}
 
         <TouchableOpacity style={styles.addExerciseButton}>
@@ -293,7 +297,7 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 70,
     paddingHorizontal: 12,
-    paddingBottom: 24,
+    paddingBottom: 112,
   },
   screenLabel: {
     color: UI.textMuted,

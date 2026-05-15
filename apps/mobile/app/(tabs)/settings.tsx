@@ -1,24 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
+  LayoutChangeEvent,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  PanResponder,
-  LayoutChangeEvent,
+  Vibration,
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
 
 import { COLORS } from '../../shared/theme';
-
-import SettingsSection from '../../src/features/settings/components/SettingsSection';
-import SettingsRow from '../../src/features/settings/components/SettingsRow';
-import TogglePill from '../../src/features/settings/components/TogglePill';
 import DeleteConfirmationModal from '../../src/features/settings/components/DeleteConfirmationModal';
 
 import {
@@ -37,6 +34,51 @@ type ChoiceConfig = {
   onSelect: (value: string) => void;
 };
 
+type ThemePalette = {
+  background: string;
+  surface: string;
+  surfaceSecondary: string;
+  surfaceTertiary: string;
+  text: string;
+  textSecondary: string;
+  textMuted: string;
+  accent: string;
+  border: string;
+  divider: string;
+  input: string;
+  danger: string;
+};
+
+const DARK_THEME: ThemePalette = {
+  background: COLORS.background,
+  surface: COLORS.surface,
+  surfaceSecondary: COLORS.surfaceSecondary,
+  surfaceTertiary: COLORS.surfaceTertiary,
+  text: COLORS.text,
+  textSecondary: COLORS.textSecondary,
+  textMuted: COLORS.textMuted,
+  accent: COLORS.accent,
+  border: COLORS.border,
+  divider: COLORS.divider,
+  input: COLORS.input,
+  danger: COLORS.danger,
+};
+
+const LIGHT_THEME: ThemePalette = {
+  background: '#F4F4EF',
+  surface: '#FFFFFF',
+  surfaceSecondary: '#ECEDE4',
+  surfaceTertiary: '#E2E3D9',
+  text: '#111111',
+  textSecondary: '#4F4F4F',
+  textMuted: '#767676',
+  accent: COLORS.accent,
+  border: '#C9CABC',
+  divider: '#E1E1D8',
+  input: '#F0F1E8',
+  danger: COLORS.danger,
+};
+
 const GOALS = [
   'General Fitness',
   'Hypertrophy',
@@ -53,36 +95,78 @@ const REST_OPTIONS = [30, 45, 60, 75, 90, 120, 150, 180, 210, 240, 300];
 
 function range(start: number, end: number, step = 1) {
   const values: string[] = [];
+
   for (let value = start; value <= end; value += step) {
     values.push(String(value));
   }
+
   return values;
 }
 
-function setNestedDraft(
-  draft: SettingsDraft,
-  updater: (next: SettingsDraft) => void,
-) {
+function cloneDraft(draft: SettingsDraft): SettingsDraft {
   return JSON.parse(JSON.stringify(draft)) as SettingsDraft;
+}
+
+function kgToLbs(kg: number) {
+  return Math.round(kg * 2.20462);
+}
+
+function lbsToKg(lbs: number) {
+  return Math.round(lbs / 2.20462);
+}
+
+function getWeightLabel(draft: SettingsDraft) {
+  if (draft.preferences.weightUnit === 'lbs') {
+    return `${kgToLbs(draft.bodyStats.weightKg)} lbs`;
+  }
+
+  return `${draft.bodyStats.weightKg} kg`;
+}
+
+function getWeightChoices(unit: SettingsDraft['preferences']['weightUnit']) {
+  if (unit === 'lbs') {
+    return range(80, 400).map(value => `${value} lbs`);
+  }
+
+  return range(35, 180).map(value => `${value} kg`);
+}
+
+function parseWeightToKg(value: string) {
+  if (value.endsWith('lbs')) {
+    return lbsToKg(Number(value.replace(' lbs', '')));
+  }
+
+  return Number(value.replace(' kg', ''));
+}
+
+function triggerHaptic(enabled: boolean) {
+  if (enabled) {
+    Vibration.vibrate(8);
+  }
 }
 
 function ChoiceModal({
   config,
   onClose,
+  theme,
 }: {
   config: ChoiceConfig | null;
   onClose: () => void;
+  theme: ThemePalette;
 }) {
   if (!config) return null;
 
   return (
     <Modal transparent visible animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Pressable style={styles.modalCard}>
+        <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{config.title}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
-              <Ionicons name="close" size={20} color={COLORS.text} />
+            <Text style={[styles.modalTitle, { color: theme.text }]}>{config.title}</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              style={[styles.modalClose, { backgroundColor: theme.surfaceSecondary }]}
+            >
+              <Ionicons name="close" size={20} color={theme.text} />
             </TouchableOpacity>
           </View>
 
@@ -93,13 +177,23 @@ function ChoiceModal({
               return (
                 <TouchableOpacity
                   key={value}
-                  style={[styles.choiceItem, selected && styles.choiceItemSelected]}
+                  style={[
+                    styles.choiceItem,
+                    { backgroundColor: theme.surfaceSecondary },
+                    selected && { backgroundColor: theme.accent },
+                  ]}
                   onPress={() => {
                     config.onSelect(value);
                     onClose();
                   }}
                 >
-                  <Text style={[styles.choiceText, selected && styles.choiceTextSelected]}>
+                  <Text
+                    style={[
+                      styles.choiceText,
+                      { color: theme.text },
+                      selected && styles.choiceTextSelected,
+                    ]}
+                  >
                     {value}
                   </Text>
                   {selected && <Ionicons name="checkmark" size={20} color="#000" />}
@@ -113,36 +207,175 @@ function ChoiceModal({
   );
 }
 
-function SelectableRow({
-  label,
-  value,
-  onPress,
-  noBorder,
+function SaveConfirmationModal({
+  visible,
+  onCancel,
+  onConfirm,
+  theme,
 }: {
-  label: string;
-  value: string;
-  onPress: () => void;
-  noBorder?: boolean;
+  visible: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  theme: ThemePalette;
 }) {
   return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onCancel}>
+      <View style={styles.confirmOverlay}>
+        <View style={[styles.confirmCard, { backgroundColor: theme.surface }]}> 
+          <Ionicons name="save-outline" size={46} color={theme.accent} />
+          <Text style={[styles.confirmTitle, { color: theme.text }]}>Save changes?</Text>
+          <Text style={[styles.confirmMessage, { color: theme.textSecondary }]}> 
+            This will save your profile, body stats, workout defaults, and AI configuration to the local database.
+          </Text>
+
+          <View style={styles.confirmActions}>
+            <TouchableOpacity
+              style={[styles.cancelSaveButton, { backgroundColor: theme.surfaceSecondary }]}
+              onPress={onCancel}
+            >
+              <Text style={[styles.cancelSaveText, { color: theme.text }]}>Cancel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.confirmSaveButton} onPress={onConfirm}>
+              <Text style={styles.confirmSaveText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function Section({
+  title,
+  children,
+  theme,
+}: {
+  title: string;
+  children: React.ReactNode;
+  theme: ThemePalette;
+}) {
+  return (
+    <View style={styles.sectionWrap}>
+      <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>{title}</Text>
+      <View
+        style={[
+          styles.sectionCard,
+          { backgroundColor: theme.surface, borderColor: theme.border },
+        ]}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
+
+function Row({
+  label,
+  value,
+  children,
+  noBorder,
+  onPress,
+  theme,
+}: {
+  label: string;
+  value?: string;
+  children?: React.ReactNode;
+  noBorder?: boolean;
+  onPress?: () => void;
+  theme: ThemePalette;
+}) {
+  const content = (
+    <View
+      style={[
+        styles.row,
+        { borderBottomColor: theme.divider },
+        noBorder && styles.noBorder,
+      ]}
+    >
+      <Text style={[styles.rowLabel, { color: theme.text }]}>{label}</Text>
+      {children ? (
+        <View style={styles.rowRight}>{children}</View>
+      ) : (
+        <View style={styles.rowValueWrap}>
+          <Text style={[styles.rowValue, { color: theme.accent }]}>{value}</Text>
+          {!!onPress && <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />}
+        </View>
+      )}
+    </View>
+  );
+
+  if (!onPress) return content;
+
+  return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
-      <SettingsRow label={label} value={value} noBorder={noBorder} />
+      {content}
     </TouchableOpacity>
   );
 }
 
-function ProfileSummary({ draft }: { draft: SettingsDraft }) {
+function TogglePill({
+  leftLabel,
+  rightLabel,
+  selected,
+  onLeftPress,
+  onRightPress,
+  theme,
+}: {
+  leftLabel: string;
+  rightLabel: string;
+  selected: 'left' | 'right';
+  onLeftPress: () => void;
+  onRightPress: () => void;
+  theme: ThemePalette;
+}) {
   return (
-    <View style={styles.profileCard}>
-      <View style={styles.avatar}>
-        <Ionicons name="person" size={40} color={COLORS.textMuted} />
+    <View style={[styles.toggleContainer, { backgroundColor: theme.input }]}> 
+      <TouchableOpacity
+        style={[styles.toggleOption, selected === 'left' && { backgroundColor: theme.accent }]}
+        onPress={onLeftPress}
+      >
+        <Text
+          style={[
+            styles.toggleText,
+            { color: theme.textMuted },
+            selected === 'left' && styles.toggleActiveText,
+          ]}
+        >
+          {leftLabel}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.toggleOption, selected === 'right' && { backgroundColor: theme.accent }]}
+        onPress={onRightPress}
+      >
+        <Text
+          style={[
+            styles.toggleText,
+            { color: theme.textMuted },
+            selected === 'right' && styles.toggleActiveText,
+          ]}
+        >
+          {rightLabel}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function ProfileSummary({ draft, theme }: { draft: SettingsDraft; theme: ThemePalette }) {
+  return (
+    <View style={[styles.profileCard, { borderBottomColor: theme.divider }]}> 
+      <View style={[styles.avatar, { backgroundColor: theme.surfaceSecondary }]}> 
+        <Ionicons name="person" size={42} color={theme.textMuted} />
       </View>
 
       <View style={styles.profileTextWrap}>
-        <Text style={styles.profileName}>{draft.profile.displayName}</Text>
-        <Text style={styles.profileGoal}>{draft.profile.goal} Goal</Text>
-        <Text style={styles.profileMeta}>{draft.profile.level}</Text>
-        <Text style={styles.profileMeta}>
+        <Text style={[styles.profileName, { color: theme.text }]}>{draft.profile.displayName}</Text>
+        <Text style={[styles.profileGoal, { color: theme.accent }]}>{draft.profile.goal} Goal</Text>
+        <Text style={[styles.profileMeta, { color: theme.textSecondary }]}>{draft.profile.level}</Text>
+        <Text style={[styles.profileMeta, { color: theme.textSecondary }]}> 
           {draft.profile.gender} • {draft.profile.age} yrs old
         </Text>
       </View>
@@ -153,9 +386,11 @@ function ProfileSummary({ draft }: { draft: SettingsDraft }) {
 function PercentSlider({
   value,
   onChange,
+  theme,
 }: {
   value: number;
   onChange: (value: number) => void;
+  theme: ThemePalette;
 }) {
   const [width, setWidth] = useState(0);
 
@@ -184,21 +419,20 @@ function PercentSlider({
   return (
     <View style={styles.sliderWrap}>
       <View
-        style={styles.sliderTrack}
+        style={[styles.sliderTrack, { backgroundColor: theme.border }]}
         onLayout={onLayout}
         {...panResponder.panHandlers}
       >
-        <View style={[styles.sliderFill, { width: `${clamp(value)}%` }]} />
+        <View style={[styles.sliderFill, { width: `${clamp(value)}%`, backgroundColor: theme.accent }]} />
         <View
           style={[
             styles.sliderThumb,
             {
-              left: width ? Math.max(0, Math.min(width - 28, (clamp(value) / 100) * width - 14)) : 0,
+              backgroundColor: theme.accent,
+              left: width ? Math.max(0, Math.min(width - 22, (clamp(value) / 100) * width - 11)) : 0,
             },
           ]}
-        >
-          <Text style={styles.sliderValue}>{clamp(value)}%</Text>
-        </View>
+        />
       </View>
     </View>
   );
@@ -208,7 +442,10 @@ export default function SettingsScreen() {
   const [draft, setDraft] = useState<SettingsDraft>(DEFAULT_SETTINGS);
   const [choiceConfig, setChoiceConfig] = useState<ChoiceConfig | null>(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [saveConfirmVisible, setSaveConfirmVisible] = useState(false);
   const [saveLabel, setSaveLabel] = useState('Save');
+
+  const theme = draft.preferences.theme === 'light' ? LIGHT_THEME : DARK_THEME;
 
   useEffect(() => {
     getOrCreateSettings()
@@ -218,46 +455,63 @@ export default function SettingsScreen() {
       });
   }, []);
 
-  const openChoice = (config: ChoiceConfig) => setChoiceConfig(config);
-
   const updateDraft = (updater: (next: SettingsDraft) => void) => {
     setDraft(current => {
-      const next = setNestedDraft(current, updater);
+      const next = cloneDraft(current);
       updater(next);
       return next;
     });
   };
 
-  const save = async () => {
+  const updatePreferenceImmediately = (updater: (next: SettingsDraft) => void) => {
+    setDraft(current => {
+      const next = cloneDraft(current);
+      updater(next);
+      triggerHaptic(next.preferences.hapticsEnabled);
+      saveSettings(next).catch(error => console.log('Immediate preference save error', error));
+      return next;
+    });
+  };
+
+  const confirmSave = async () => {
+    setSaveConfirmVisible(false);
     setSaveLabel('Saving');
-    await saveSettings(draft);
-    setSaveLabel('Saved');
-    setTimeout(() => setSaveLabel('Save'), 1200);
+
+    try {
+      await saveSettings(draft);
+      triggerHaptic(draft.preferences.hapticsEnabled);
+      setSaveLabel('Saved');
+      setTimeout(() => setSaveLabel('Save'), 1200);
+    } catch (error) {
+      console.log('Settings save error', error);
+      setSaveLabel('Retry');
+    }
   };
 
   return (
     <>
       <ScrollView
-        style={styles.root}
+        style={[styles.root, { backgroundColor: theme.background }]}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Settings</Text>
+          <Text style={[styles.title, { color: theme.text }]}>Settings</Text>
 
-          <TouchableOpacity style={styles.saveButton} onPress={save}>
+          <TouchableOpacity style={styles.saveButton} onPress={() => setSaveConfirmVisible(true)}>
             <Text style={styles.saveText}>{saveLabel}</Text>
           </TouchableOpacity>
         </View>
 
-        <SettingsSection title="User Profile">
-          <ProfileSummary draft={draft} />
+        <Section title="User Profile" theme={theme}>
+          <ProfileSummary draft={draft} theme={theme} />
 
-          <SelectableRow
+          <Row
             label="Goal"
             value={draft.profile.goal}
+            theme={theme}
             onPress={() =>
-              openChoice({
+              setChoiceConfig({
                 title: 'Choose Goal',
                 values: GOALS,
                 selected: draft.profile.goal,
@@ -266,11 +520,12 @@ export default function SettingsScreen() {
             }
           />
 
-          <SelectableRow
+          <Row
             label="Training Level"
             value={draft.profile.level}
+            theme={theme}
             onPress={() =>
-              openChoice({
+              setChoiceConfig({
                 title: 'Choose Level',
                 values: LEVELS,
                 selected: draft.profile.level,
@@ -279,11 +534,12 @@ export default function SettingsScreen() {
             }
           />
 
-          <SelectableRow
+          <Row
             label="Gender"
             value={draft.profile.gender}
+            theme={theme}
             onPress={() =>
-              openChoice({
+              setChoiceConfig({
                 title: 'Choose Gender',
                 values: GENDERS,
                 selected: draft.profile.gender,
@@ -292,12 +548,13 @@ export default function SettingsScreen() {
             }
           />
 
-          <SelectableRow
+          <Row
             label="Age"
             value={`${draft.profile.age}`}
+            theme={theme}
             noBorder
             onPress={() =>
-              openChoice({
+              setChoiceConfig({
                 title: 'Choose Age',
                 values: range(13, 80),
                 selected: String(draft.profile.age),
@@ -305,27 +562,29 @@ export default function SettingsScreen() {
               })
             }
           />
-        </SettingsSection>
+        </Section>
 
-        <SettingsSection title="Body Stats">
-          <SelectableRow
+        <Section title="Body Stats" theme={theme}>
+          <Row
             label="Weight"
-            value={`${draft.bodyStats.weightKg} kg`}
+            value={getWeightLabel(draft)}
+            theme={theme}
             onPress={() =>
-              openChoice({
+              setChoiceConfig({
                 title: 'Choose Weight',
-                values: range(35, 180).map(value => `${value} kg`),
-                selected: `${draft.bodyStats.weightKg} kg`,
-                onSelect: value => updateDraft(next => { next.bodyStats.weightKg = Number(value.replace(' kg', '')); }),
+                values: getWeightChoices(draft.preferences.weightUnit),
+                selected: getWeightLabel(draft),
+                onSelect: value => updateDraft(next => { next.bodyStats.weightKg = parseWeightToKg(value); }),
               })
             }
           />
 
-          <SelectableRow
+          <Row
             label="Height"
             value={`${draft.bodyStats.heightCm} cm`}
+            theme={theme}
             onPress={() =>
-              openChoice({
+              setChoiceConfig({
                 title: 'Choose Height',
                 values: range(130, 220).map(value => `${value} cm`),
                 selected: `${draft.bodyStats.heightCm} cm`,
@@ -334,11 +593,12 @@ export default function SettingsScreen() {
             }
           />
 
-          <SelectableRow
+          <Row
             label="Body Fat"
             value={`${draft.bodyStats.bodyFatPercent}%`}
+            theme={theme}
             onPress={() =>
-              openChoice({
+              setChoiceConfig({
                 title: 'Choose Body Fat',
                 values: range(5, 50).map(value => `${value}%`),
                 selected: `${draft.bodyStats.bodyFatPercent}%`,
@@ -347,12 +607,13 @@ export default function SettingsScreen() {
             }
           />
 
-          <SelectableRow
+          <Row
             label="Body Type"
             value={draft.bodyStats.bodyType}
+            theme={theme}
             noBorder
             onPress={() =>
-              openChoice({
+              setChoiceConfig({
                 title: 'Choose Body Type',
                 values: BODY_TYPES,
                 selected: draft.bodyStats.bodyType,
@@ -360,61 +621,66 @@ export default function SettingsScreen() {
               })
             }
           />
-        </SettingsSection>
+        </Section>
 
-        <SettingsSection title="Preferences">
-          <SettingsRow label="Weight Unit">
+        <Section title="Preferences" theme={theme}>
+          <Row label="Weight Unit" theme={theme}>
             <TogglePill
               leftLabel="kg"
               rightLabel="lbs"
               selected={draft.preferences.weightUnit === 'kg' ? 'left' : 'right'}
-              onLeftPress={() => updateDraft(next => { next.preferences.weightUnit = 'kg'; })}
-              onRightPress={() => updateDraft(next => { next.preferences.weightUnit = 'lbs'; })}
+              theme={theme}
+              onLeftPress={() => updatePreferenceImmediately(next => { next.preferences.weightUnit = 'kg'; })}
+              onRightPress={() => updatePreferenceImmediately(next => { next.preferences.weightUnit = 'lbs'; })}
             />
-          </SettingsRow>
+          </Row>
 
-          <SettingsRow label="Distance Unit">
+          <Row label="Distance Unit" theme={theme}>
             <TogglePill
               leftLabel="km"
               rightLabel="mi"
               selected={draft.preferences.distanceUnit === 'km' ? 'left' : 'right'}
-              onLeftPress={() => updateDraft(next => { next.preferences.distanceUnit = 'km'; })}
-              onRightPress={() => updateDraft(next => { next.preferences.distanceUnit = 'mi'; })}
+              theme={theme}
+              onLeftPress={() => updatePreferenceImmediately(next => { next.preferences.distanceUnit = 'km'; })}
+              onRightPress={() => updatePreferenceImmediately(next => { next.preferences.distanceUnit = 'mi'; })}
             />
-          </SettingsRow>
+          </Row>
 
-          <SettingsRow label="App Theme">
+          <Row label="App Theme" theme={theme}>
             <TogglePill
               leftLabel="Dark"
               rightLabel="Light"
               selected={draft.preferences.theme === 'dark' ? 'left' : 'right'}
-              onLeftPress={() => updateDraft(next => { next.preferences.theme = 'dark'; })}
-              onRightPress={() => updateDraft(next => { next.preferences.theme = 'light'; })}
+              theme={theme}
+              onLeftPress={() => updatePreferenceImmediately(next => { next.preferences.theme = 'dark'; })}
+              onRightPress={() => updatePreferenceImmediately(next => { next.preferences.theme = 'light'; })}
             />
-          </SettingsRow>
+          </Row>
 
-          <SettingsRow label="Sound">
+          <Row label="Sound" theme={theme}>
             <TogglePill
               leftLabel="On"
               rightLabel="Off"
               selected={draft.preferences.soundEnabled ? 'left' : 'right'}
-              onLeftPress={() => updateDraft(next => { next.preferences.soundEnabled = true; })}
-              onRightPress={() => updateDraft(next => { next.preferences.soundEnabled = false; })}
+              theme={theme}
+              onLeftPress={() => updatePreferenceImmediately(next => { next.preferences.soundEnabled = true; })}
+              onRightPress={() => updatePreferenceImmediately(next => { next.preferences.soundEnabled = false; })}
             />
-          </SettingsRow>
+          </Row>
 
-          <SettingsRow label="Haptics" noBorder>
+          <Row label="Haptics" theme={theme} noBorder>
             <TogglePill
               leftLabel="On"
               rightLabel="Off"
               selected={draft.preferences.hapticsEnabled ? 'left' : 'right'}
-              onLeftPress={() => updateDraft(next => { next.preferences.hapticsEnabled = true; })}
-              onRightPress={() => updateDraft(next => { next.preferences.hapticsEnabled = false; })}
+              theme={theme}
+              onLeftPress={() => updatePreferenceImmediately(next => { next.preferences.hapticsEnabled = true; })}
+              onRightPress={() => updatePreferenceImmediately(next => { next.preferences.hapticsEnabled = false; })}
             />
-          </SettingsRow>
-        </SettingsSection>
+          </Row>
+        </Section>
 
-        <SettingsSection title="Workout Defaults">
+        <Section title="Workout Defaults" theme={theme}>
           {[
             ['Global Default Rest Interval', 'defaultRestSeconds'],
             ['Warm-up Set Rest', 'warmupRestSeconds'],
@@ -422,13 +688,14 @@ export default function SettingsScreen() {
             ['Drop Set Rest', 'dropRestSeconds'],
             ['Failure Set Rest', 'failureRestSeconds'],
           ].map(([label, key], index, list) => (
-            <SelectableRow
+            <Row
               key={key}
               label={label}
               value={formatRestTime(draft.workoutDefaults[key as keyof SettingsDraft['workoutDefaults']])}
+              theme={theme}
               noBorder={index === list.length - 1}
               onPress={() =>
-                openChoice({
+                setChoiceConfig({
                   title: label,
                   values: REST_OPTIONS.map(seconds => formatRestTime(seconds)),
                   selected: formatRestTime(draft.workoutDefaults[key as keyof SettingsDraft['workoutDefaults']]),
@@ -442,33 +709,41 @@ export default function SettingsScreen() {
               }
             />
           ))}
-        </SettingsSection>
+        </Section>
 
-        <SettingsSection title="AI Configuration">
+        <Section title="AI Configuration" theme={theme}>
           <View style={styles.aiHeaderRow}>
-            <Text style={styles.sliderLabel}>Model Confidence Threshold</Text>
+            <Text style={[styles.sliderLabel, { color: theme.text }]}>Model Confidence Threshold</Text>
             <Text style={styles.aiValue}>{draft.ai.confidenceThreshold}%</Text>
           </View>
 
           <PercentSlider
             value={draft.ai.confidenceThreshold}
+            theme={theme}
             onChange={value => updateDraft(next => { next.ai.confidenceThreshold = value; })}
           />
-        </SettingsSection>
+        </Section>
 
-        <SettingsSection title="Data Management">
+        <Section title="Data Management" theme={theme}>
           <TouchableOpacity
-            style={styles.deleteButton}
+            style={[styles.deleteButton, { borderColor: theme.danger }]}
             onPress={() => setDeleteModalVisible(true)}
           >
-            <Text style={styles.deleteText}>DELETE ALL LOCAL DATA</Text>
+            <Text style={[styles.deleteText, { color: theme.danger }]}>DELETE ALL LOCAL DATA</Text>
           </TouchableOpacity>
 
-          <Text style={styles.warningText}>This action cannot be undone</Text>
-        </SettingsSection>
+          <Text style={[styles.warningText, { color: theme.textMuted }]}>This action cannot be undone</Text>
+        </Section>
       </ScrollView>
 
-      <ChoiceModal config={choiceConfig} onClose={() => setChoiceConfig(null)} />
+      <ChoiceModal config={choiceConfig} onClose={() => setChoiceConfig(null)} theme={theme} />
+
+      <SaveConfirmationModal
+        visible={saveConfirmVisible}
+        onCancel={() => setSaveConfirmVisible(false)}
+        onConfirm={confirmSave}
+        theme={theme}
+      />
 
       <DeleteConfirmationModal
         visible={deleteModalVisible}
@@ -485,12 +760,11 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: COLORS.background,
   },
   content: {
     paddingTop: 72,
     paddingHorizontal: 20,
-    paddingBottom: 4,
+    paddingBottom: 96,
   },
   header: {
     flexDirection: 'row',
@@ -499,7 +773,6 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   title: {
-    color: COLORS.text,
     fontSize: 32,
     fontWeight: '800',
   },
@@ -516,18 +789,78 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 16,
   },
+  sectionWrap: {
+    marginBottom: 28,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  sectionCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 18,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+  },
+  noBorder: {
+    borderBottomWidth: 0,
+  },
+  rowLabel: {
+    flex: 1,
+    fontSize: 18,
+    paddingRight: 12,
+  },
+  rowValueWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  rowValue: {
+    fontWeight: '700',
+    fontSize: 18,
+    textAlign: 'right',
+  },
+  rowRight: {
+    alignItems: 'flex-end',
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    borderRadius: 999,
+    padding: 4,
+    gap: 6,
+  },
+  toggleOption: {
+    minWidth: 68,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+  },
+  toggleText: {
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  toggleActiveText: {
+    color: '#000',
+  },
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
   },
   avatar: {
     width: 82,
     height: 82,
     borderRadius: 41,
-    backgroundColor: COLORS.surfaceSecondary,
     marginRight: 18,
     alignItems: 'center',
     justifyContent: 'center',
@@ -536,19 +869,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   profileName: {
-    color: COLORS.text,
     fontSize: 26,
     fontWeight: '800',
   },
   profileGoal: {
     marginTop: 4,
-    color: COLORS.accent,
     fontWeight: '700',
     fontSize: 17,
   },
   profileMeta: {
     marginTop: 4,
-    color: COLORS.textSecondary,
     fontSize: 15,
   },
   aiHeaderRow: {
@@ -558,7 +888,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sliderLabel: {
-    color: COLORS.text,
     fontSize: 16,
     fontWeight: '700',
     flex: 1,
@@ -579,43 +908,30 @@ const styles = StyleSheet.create({
   sliderTrack: {
     height: 8,
     borderRadius: 999,
-    backgroundColor: COLORS.border,
     justifyContent: 'center',
   },
   sliderFill: {
     height: 8,
     borderRadius: 999,
-    backgroundColor: COLORS.accent,
   },
   sliderThumb: {
     position: 'absolute',
-    top: -10,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sliderValue: {
-    color: '#000',
-    fontSize: 10,
-    fontWeight: '900',
+    top: -7,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
   },
   deleteButton: {
     borderWidth: 1.5,
-    borderColor: COLORS.danger,
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
   },
   deleteText: {
-    color: COLORS.danger,
     fontWeight: '800',
     fontSize: 15,
   },
   warningText: {
-    color: COLORS.textMuted,
     marginTop: 14,
     textAlign: 'center',
   },
@@ -626,7 +942,6 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     maxHeight: '70%',
-    backgroundColor: COLORS.surface,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingHorizontal: 20,
@@ -640,7 +955,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: {
-    color: COLORS.text,
     fontSize: 22,
     fontWeight: '800',
   },
@@ -648,7 +962,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: COLORS.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -660,20 +973,65 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 16,
     marginBottom: 8,
-    backgroundColor: COLORS.surfaceSecondary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  choiceItemSelected: {
-    backgroundColor: COLORS.accent,
-  },
   choiceText: {
-    color: COLORS.text,
     fontSize: 17,
     fontWeight: '700',
   },
   choiceTextSelected: {
     color: '#000',
+  },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+  },
+  confirmCard: {
+    borderRadius: 28,
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    alignItems: 'center',
+  },
+  confirmTitle: {
+    marginTop: 12,
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  confirmMessage: {
+    marginTop: 12,
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'center',
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 14,
+    marginTop: 24,
+  },
+  cancelSaveButton: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  confirmSaveButton: {
+    flex: 1,
+    backgroundColor: COLORS.accent,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  cancelSaveText: {
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  confirmSaveText: {
+    color: '#000',
+    fontWeight: '800',
+    fontSize: 16,
   },
 });
