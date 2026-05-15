@@ -1,5 +1,9 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { useFrameProcessor, type Frame, runAtTargetFps } from 'react-native-vision-camera';
+import {
+  useFrameProcessor,
+  type Frame,
+  runAtTargetFps,
+} from 'react-native-vision-camera';
 import { useSharedValue, Worklets } from 'react-native-worklets-core';
 
 import {
@@ -9,6 +13,7 @@ import {
   isFrameUsable,
   type RawLandmarks,
 } from '../pose/BlazePoseDetector';
+
 import { normalisePose } from '../../../ml/preprocessing/normalizePose';
 import { TemporalBuffer, WINDOW_SIZE } from '../utils/temporalBuffer';
 import { STGCNRunner, type ExerciseClass } from '../inference/STGCNRunner';
@@ -42,15 +47,24 @@ const initialState: CaptureState = {
   frameSize: null,
 };
 
-function smoothLandmarks(prev: RawLandmarks | null, current: RawLandmarks): RawLandmarks {
+function smoothLandmarks(
+  prev: RawLandmarks | null,
+  current: RawLandmarks,
+): RawLandmarks {
   if (!prev || prev.length !== current.length) return current;
 
   return current.map((lm, idx) => {
     const prevLm = prev[idx];
+
     if (!Number.isFinite(lm.x) || !Number.isFinite(lm.y) || !Number.isFinite(lm.z)) {
       return prevLm;
     }
-    if (!Number.isFinite(prevLm.x) || !Number.isFinite(prevLm.y) || !Number.isFinite(prevLm.z)) {
+
+    if (
+      !Number.isFinite(prevLm.x) ||
+      !Number.isFinite(prevLm.y) ||
+      !Number.isFinite(prevLm.z)
+    ) {
       return lm;
     }
 
@@ -58,23 +72,28 @@ function smoothLandmarks(prev: RawLandmarks | null, current: RawLandmarks): RawL
       x: prevLm.x + (lm.x - prevLm.x) * LANDMARK_SMOOTHING_ALPHA,
       y: prevLm.y + (lm.y - prevLm.y) * LANDMARK_SMOOTHING_ALPHA,
       z: prevLm.z + (lm.z - prevLm.z) * LANDMARK_SMOOTHING_ALPHA,
-      visibility: ((prevLm.visibility ?? 0) * (1 - LANDMARK_SMOOTHING_ALPHA)) + ((lm.visibility ?? 0) * LANDMARK_SMOOTHING_ALPHA),
+      visibility:
+        ((prevLm.visibility ?? 0) * (1 - LANDMARK_SMOOTHING_ALPHA)) +
+        ((lm.visibility ?? 0) * LANDMARK_SMOOTHING_ALPHA),
     };
   });
 }
 
 export function useCapture() {
-  const [state, setState] = useState<CaptureState>(initialState);
+  const [state, setState] = useState(initialState);
 
   const bufferRef = useRef(new TemporalBuffer(WINDOW_SIZE));
   const repCounterRef = useRef(new RepCounter());
   const stgcnRunnerRef = useRef(STGCNRunner.getInstance());
+
   const frameIndexRef = useRef(0);
   const windowStartRef = useRef(0);
   const fpsTimestampsRef = useRef<number[]>([]);
   const inferenceInFlightRef = useRef(false);
+
   const smoothedLandmarksRef = useRef<RawLandmarks | null>(null);
   const lastLandmarkUiUpdateRef = useRef(0);
+
   const poseInFlight = useSharedValue(false);
 
   useEffect(() => {
@@ -82,11 +101,16 @@ export function useCapture() {
 
     Promise.all([loadBlazePose(), stgcnRunnerRef.current.load()])
       .then(() => {
-        if (!cancelled) setState(s => ({ ...s, isReady: true }));
+        if (!cancelled) {
+          setState(s => ({ ...s, isReady: true }));
+        }
       })
       .catch(err => {
         if (!cancelled) {
-          setState(s => ({ ...s, error: `Model load failed: ${err?.message ?? err}` }));
+          setState(s => ({
+            ...s,
+            error: `Model load failed: ${err?.message ?? err}`,
+          }));
         }
       });
 
@@ -100,9 +124,16 @@ export function useCapture() {
     };
   }, []);
 
-  const updateClassification = useCallback((exerciseClass: ExerciseClass, confidence: number) => {
-    setState(s => ({ ...s, exerciseClass, classConfidence: confidence }));
-  }, []);
+  const updateClassification = useCallback(
+    (exerciseClass: ExerciseClass, confidence: number) => {
+      setState(s => ({
+        ...s,
+        exerciseClass,
+        classConfidence: confidence,
+      }));
+    },
+    [],
+  );
 
   const updateFps = useCallback((fps: number) => {
     setState(s => ({ ...s, fps }));
@@ -118,7 +149,11 @@ export function useCapture() {
 
       if (!isFrameUsable(landmarks)) return;
 
-      const smoothedLandmarks = smoothLandmarks(smoothedLandmarksRef.current, landmarks);
+      const smoothedLandmarks = smoothLandmarks(
+        smoothedLandmarksRef.current,
+        landmarks,
+      );
+
       smoothedLandmarksRef.current = smoothedLandmarks;
 
       const featureVec = normalisePose(smoothedLandmarks);
@@ -129,11 +164,17 @@ export function useCapture() {
 
       if (now - lastLandmarkUiUpdateRef.current >= LANDMARK_UI_UPDATE_MS) {
         lastLandmarkUiUpdateRef.current = now;
-        setState(s => ({ ...s, landmarks: smoothedLandmarks, frameSize }));
+
+        setState(s => ({
+          ...s,
+          landmarks: smoothedLandmarks,
+          frameSize,
+        }));
       }
 
       fpsTimestampsRef.current.push(now);
       fpsTimestampsRef.current = fpsTimestampsRef.current.filter(t => now - t < 1000);
+
       if (frameIdx % 15 === 0) {
         updateFps(fpsTimestampsRef.current.length);
       }
@@ -144,35 +185,49 @@ export function useCapture() {
         !inferenceInFlightRef.current
       ) {
         inferenceInFlightRef.current = true;
+
         const windowTensor = bufferRef.current.getWindow();
         const windowStart = windowStartRef.current;
+
         windowStartRef.current = frameIdx;
+
         runStgcn(windowTensor, windowStart);
       }
     },
     [updateFps],
   );
 
-  const runBlazePoseAsync = useCallback(
-    async (frame: Frame) => {
+ const runBlazePoseAsync = useCallback(
+  async (frame: Frame) => {
+    try {
+      const frameSize = {
+        width: frame.width,
+        height: frame.height,
+      };
+
+      const inputTensor = await frameToInputTensor(frame);
+      const landmarks = await detectPose(inputTensor);
+
+      onLandmarksReady(landmarks, frameSize);
+    } catch (e: any) {
+      reportError(e?.message ?? 'BlazePose inference error');
+    } finally {
       try {
-        const frameSize = { width: frame.width, height: frame.height };
-        const inputTensor = await frameToInputTensor(frame);
-        const landmarks = await detectPose(inputTensor);
-        onLandmarksReady(landmarks, frameSize);
-      } catch (e: any) {
-        poseInFlight.value = false;
-        reportError(e?.message ?? 'BlazePose inference error');
-      }
-    },
-    [onLandmarksReady, reportError],
-  );
+        (frame as any).decrementRefCount();
+      } catch {}
+
+      poseInFlight.value = false;
+    }
+  },
+  [onLandmarksReady, reportError],
+);
 
   const runStgcn = useCallback(
     async (windowTensor: Float32Array, windowStart: number) => {
       try {
         const result = await stgcnRunnerRef.current.run(windowTensor);
         const confidence = Math.max(...result.classProbs);
+
         updateClassification(result.exerciseClass, confidence);
         repCounterRef.current.processWindow(result.densityMap, windowStart);
       } catch (e: any) {
@@ -185,32 +240,60 @@ export function useCapture() {
   );
 
   const runBlazePoseAsyncOnJS = Worklets.createRunOnJS(runBlazePoseAsync);
+  const reportErrorOnJS = Worklets.createRunOnJS(reportError);
 
   const frameProcessor = useFrameProcessor(
     (frame: Frame) => {
       'worklet';
+
       if (!state.isRunning) return;
 
       runAtTargetFps(15, () => {
         'worklet';
+
         if (poseInFlight.value) return;
+
         poseInFlight.value = true;
-        runBlazePoseAsyncOnJS(frame);
+
+        try {
+          /**
+           * IMPORTANT:
+           * Convert the Frame while it is still alive inside the frame processor.
+           * Do not pass the Frame itself to an async JS function.
+           */
+          try {
+  (frame as any).incrementRefCount();
+  runBlazePoseAsyncOnJS(frame);
+} catch (e: any) {
+  poseInFlight.value = false;
+
+  try {
+    (frame as any).decrementRefCount();
+  } catch {}
+}
+        } catch (e: any) {
+          poseInFlight.value = false;
+          reportErrorOnJS(e?.message ?? 'Frame processing error');
+        }
       });
     },
-    [state.isRunning, runBlazePoseAsyncOnJS],
+    [state.isRunning, runBlazePoseAsyncOnJS, reportErrorOnJS],
   );
 
   const startCapture = useCallback(() => {
     bufferRef.current.reset();
     repCounterRef.current.reset();
+
     frameIndexRef.current = 0;
     windowStartRef.current = 0;
     fpsTimestampsRef.current = [];
     inferenceInFlightRef.current = false;
+
     smoothedLandmarksRef.current = null;
     lastLandmarkUiUpdateRef.current = 0;
+
     poseInFlight.value = false;
+
     setState(s => ({
       ...s,
       isRunning: true,
@@ -228,11 +311,19 @@ export function useCapture() {
 
   const resetReps = useCallback(() => {
     repCounterRef.current.reset();
+
     frameIndexRef.current = 0;
     windowStartRef.current = 0;
+
     bufferRef.current.reset();
     smoothedLandmarksRef.current = null;
-    setState(s => ({ ...s, repCount: 0, landmarks: null, frameSize: null }));
+
+    setState(s => ({
+      ...s,
+      repCount: 0,
+      landmarks: null,
+      frameSize: null,
+    }));
   }, []);
 
   return {

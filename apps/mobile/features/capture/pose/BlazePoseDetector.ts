@@ -1,6 +1,7 @@
 import { loadTensorflowModel, TensorflowModel } from 'react-native-fast-tflite';
 import { Asset } from 'expo-asset';
 import type { Frame } from 'react-native-vision-camera';
+
 import { Landmark3D } from '../../../ml/preprocessing/normalizePose';
 import { NUM_JOINTS } from '../../../ml/graph/adjacencyMatrix';
 
@@ -37,8 +38,15 @@ function frameToLandmarkTensor(frame: Frame): Float32Array {
   'worklet';
 
   const { width, height } = frame;
+
+  /**
+   * IMPORTANT:
+   * frame.toArrayBuffer() must be called while the Frame is still alive,
+   * meaning inside the frame processor/worklet.
+   */
   const buffer = (frame as any).toArrayBuffer();
   const src = new Uint8Array(buffer);
+
   const out = new Float32Array(LANDMARK_INPUT_SIZE * LANDMARK_INPUT_SIZE * 3);
   const pixelFormat: string = (frame as any).pixelFormat ?? 'rgba-8888';
 
@@ -57,34 +65,41 @@ function frameToLandmarkTensor(frame: Frame): Float32Array {
       if (pixelFormat === 'yuv' || pixelFormat === 'yuv-420-888') {
         const uvW = Math.floor(width / 2);
         const uvH = Math.floor(height / 2);
+
         const yIdx = sy * width + sx;
         const uIdx = width * height + Math.floor(sy / 2) * uvW + Math.floor(sx / 2);
         const vIdx = uIdx + uvW * uvH;
+
         const Y = src[yIdx];
         const U = (src[uIdx] ?? 128) - 128;
         const V = (src[vIdx] ?? 128) - 128;
+
         r = Math.max(0, Math.min(255, Y + 1.402 * V));
         g = Math.max(0, Math.min(255, Y - 0.344 * U - 0.714 * V));
         b = Math.max(0, Math.min(255, Y + 1.772 * U));
       } else if (pixelFormat === 'rgb' || pixelFormat === 'rgb-888') {
         const pIdx = (sy * width + sx) * 3;
+
         r = src[pIdx] ?? 0;
         g = src[pIdx + 1] ?? 0;
         b = src[pIdx + 2] ?? 0;
       } else if (pixelFormat === 'bgra-8888') {
         const pIdx = (sy * width + sx) * 4;
+
         b = src[pIdx] ?? 0;
         g = src[pIdx + 1] ?? 0;
         r = src[pIdx + 2] ?? 0;
       } else {
         const bytesPerPixel = src.length >= width * height * 4 ? 4 : 3;
         const pIdx = (sy * width + sx) * bytesPerPixel;
+
         r = src[pIdx] ?? 0;
         g = src[pIdx + 1] ?? 0;
         b = src[pIdx + 2] ?? 0;
       }
 
       const outIdx = (dy * LANDMARK_INPUT_SIZE + dx) * 3;
+
       out[outIdx] = Number.isFinite(r) ? r / 255.0 : 0;
       out[outIdx + 1] = Number.isFinite(g) ? g / 255.0 : 0;
       out[outIdx + 2] = Number.isFinite(b) ? b / 255.0 : 0;
@@ -94,15 +109,33 @@ function frameToLandmarkTensor(frame: Frame): Float32Array {
   return out;
 }
 
-export function parseLandmarkTensor(landmarkTensor: Float32Array, posePresence: number): RawLandmarks {
+/**
+ * This must stay synchronous.
+ * Do NOT make this async, and do NOT call it after passing the Frame to JS.
+ */
+export function frameToInputTensor(frame: Frame): Float32Array {
+  'worklet';
+  return frameToLandmarkTensor(frame);
+}
+
+export function parseLandmarkTensor(
+  landmarkTensor: Float32Array,
+  posePresence: number,
+): RawLandmarks {
   if (posePresence < POSE_PRESENCE_MIN) {
-    return Array.from({ length: USED_LANDMARKS }, () => ({ x: NaN, y: NaN, z: NaN, visibility: 0 }));
+    return Array.from({ length: USED_LANDMARKS }, () => ({
+      x: NaN,
+      y: NaN,
+      z: NaN,
+      visibility: 0,
+    }));
   }
 
   const landmarks: RawLandmarks = [];
 
   for (let i = 0; i < USED_LANDMARKS; i++) {
     const base = i * COORDS_PER_LM;
+
     const x = landmarkTensor[base];
     const y = landmarkTensor[base + 1];
     const z = landmarkTensor[base + 2];
@@ -110,7 +143,12 @@ export function parseLandmarkTensor(landmarkTensor: Float32Array, posePresence: 
     const presence = landmarkTensor[base + 4];
 
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-      landmarks.push({ x: NaN, y: NaN, z: NaN, visibility: 0 });
+      landmarks.push({
+        x: NaN,
+        y: NaN,
+        z: NaN,
+        visibility: 0,
+      });
       continue;
     }
 
@@ -118,23 +156,26 @@ export function parseLandmarkTensor(landmarkTensor: Float32Array, posePresence: 
       x,
       y,
       z,
-      visibility: visibility >= VISIBILITY_THRESHOLD && presence >= PRESENCE_THRESHOLD ? visibility : Math.max(visibility, 0),
+      visibility:
+        visibility >= VISIBILITY_THRESHOLD && presence >= PRESENCE_THRESHOLD
+          ? visibility
+          : Math.max(visibility, 0),
     });
   }
 
   return landmarks;
 }
 
-export async function frameToInputTensor(frame: Frame): Promise<Float32Array> {
-  return frameToLandmarkTensor(frame);
-}
-
 export async function detectPose(inputTensor: Float32Array): Promise<RawLandmarks> {
-  if (!landmarkModel) throw new Error('Landmark model not loaded.');
+  if (!landmarkModel) {
+    throw new Error('Landmark model not loaded.');
+  }
 
   const outputs = await landmarkModel.run([inputTensor]);
+
   const landmarkTensor = outputs[0] as Float32Array;
   const presenceTensor = outputs[1] as Float32Array;
+
   const posePresence = Number.isFinite(presenceTensor?.[0]) ? presenceTensor[0] : 0;
 
   console.log(`Presence: ${posePresence.toFixed(3)}, landmarks: ${landmarkTensor.length}`);
@@ -143,6 +184,9 @@ export async function detectPose(inputTensor: Float32Array): Promise<RawLandmark
 }
 
 export function isFrameUsable(landmarks: RawLandmarks): boolean {
-  const visible = landmarks.filter(lm => Number.isFinite(lm.x) && (lm.visibility ?? 0) > 0.1).length;
+  const visible = landmarks.filter(
+    lm => Number.isFinite(lm.x) && (lm.visibility ?? 0) > 0.1,
+  ).length;
+
   return visible >= Math.floor(USED_LANDMARKS * 0.5);
 }
