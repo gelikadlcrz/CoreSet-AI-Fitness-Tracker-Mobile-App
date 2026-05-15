@@ -136,14 +136,22 @@ function toOverlayPoints(
     const visibility = point.visibility ?? 1;
     const presence = point.presence ?? 1;
 
+    /*
+      MediaPipe landmarks are coming from a landscape camera frame,
+      while the screen is portrait.
+
+      Rotate landmark coordinates into portrait view.
+    */
+    const rotatedX = 1 - point.y;
+    const rotatedY = point.x;
+
     return {
-      x: point.x * width,
-      y: point.y * height,
+      x: rotatedX * width,
+      y: rotatedY * height,
       visible: visibility >= 0.35 && presence >= 0.35,
     };
   });
 }
-
 function SkeletonOverlay({
   landmarks,
   width,
