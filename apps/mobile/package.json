@@ -9,6 +9,7 @@
     "lint": "eslint . --ext .ts,.tsx"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~3.2.1",
     "@expo/vector-icons": "^15.1.1",
     "date-fns": "^3.6.0",
     "expo": "~51.0.0",
