@@ -12,6 +12,8 @@ import Routine from './models/Routine';
 import RoutineExercise from './models/RoutineExercise';
 import Session from './models/Session';
 import WorkoutSet from './models/WorkoutSet';
+import Rep from './models/Rep';
+import ExportHistory from './models/ExportHistory';
 
 const adapter = new SQLiteAdapter({
   schema,
@@ -34,5 +36,7 @@ export const database = new Database({
     RoutineExercise,
     Session,
     WorkoutSet,
+    Rep,
+    ExportHistory,
   ],
 });

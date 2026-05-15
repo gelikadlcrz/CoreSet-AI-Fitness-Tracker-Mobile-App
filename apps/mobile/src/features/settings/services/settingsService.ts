@@ -5,10 +5,14 @@ const now = () => Date.now();
 
 export const DEFAULT_SETTINGS: SettingsDraft = {
   profile: {
+    isLoggedIn: false,
+    userId: 'local-demo-user',
+    authId: 'local-demo-auth',
+    email: '',
     displayName: 'Demo User',
     goal: 'Hypertrophy',
     level: 'Intermediate',
-    gender: 'Male',
+    gender: 'Prefer not to say',
     age: 21,
     photoUri: '',
   },
@@ -22,7 +26,7 @@ export const DEFAULT_SETTINGS: SettingsDraft = {
 
   preferences: {
     weightUnit: 'kg',
-    distanceUnit: 'km',
+    distanceUnit: 'm',
     theme: 'dark',
     soundEnabled: true,
     hapticsEnabled: true,
@@ -38,45 +42,54 @@ export const DEFAULT_SETTINGS: SettingsDraft = {
 
   ai: {
     confidenceThreshold: 85,
-    smoothing: 60,
-    repSensitivity: 70,
   },
 };
+
+function normalizeDistanceUnit(value?: string): 'm' | 'in' {
+  if (value === 'in' || value === 'inches' || value === 'mi') return 'in';
+  return 'm';
+}
+
+function normalizeTheme(value?: string): 'dark' | 'light' {
+  return value === 'light' ? 'light' : 'dark';
+}
 
 function toDraft(profile: any, bodyStats: any, settings: any): SettingsDraft {
   return {
     profile: {
-      displayName: profile.displayName,
-      goal: profile.goal,
-      level: profile.level,
-      gender: profile.gender,
-      age: profile.age,
+      isLoggedIn: !!profile.isLoggedIn,
+      userId: profile.remoteUserId || profile.userId || 'local-demo-user',
+      authId: profile.authId || 'local-demo-auth',
+      email: profile.email || '',
+      displayName: profile.displayName || DEFAULT_SETTINGS.profile.displayName,
+      goal: profile.goal || DEFAULT_SETTINGS.profile.goal,
+      level: profile.level || DEFAULT_SETTINGS.profile.level,
+      gender: profile.gender || DEFAULT_SETTINGS.profile.gender,
+      age: profile.age || DEFAULT_SETTINGS.profile.age,
       photoUri: profile.photoUri || '',
     },
     bodyStats: {
-      weightKg: bodyStats.weightKg,
-      heightCm: bodyStats.heightCm,
-      bodyFatPercent: bodyStats.bodyFatPercent,
-      bodyType: bodyStats.bodyType,
+      weightKg: bodyStats.weightKg || DEFAULT_SETTINGS.bodyStats.weightKg,
+      heightCm: bodyStats.heightCm || DEFAULT_SETTINGS.bodyStats.heightCm,
+      bodyFatPercent: bodyStats.bodyFatPercent || DEFAULT_SETTINGS.bodyStats.bodyFatPercent,
+      bodyType: bodyStats.bodyType || DEFAULT_SETTINGS.bodyStats.bodyType,
     },
     preferences: {
-      weightUnit: settings.weightUnit,
-      distanceUnit: settings.distanceUnit,
-      theme: settings.theme,
-      soundEnabled: settings.soundEnabled,
-      hapticsEnabled: settings.hapticsEnabled,
+      weightUnit: settings.weightUnit === 'lbs' ? 'lbs' : 'kg',
+      distanceUnit: normalizeDistanceUnit(settings.distanceUnit),
+      theme: normalizeTheme(settings.theme),
+      soundEnabled: settings.soundEnabled !== false,
+      hapticsEnabled: settings.hapticsEnabled !== false,
     },
     workoutDefaults: {
-      defaultRestSeconds: settings.defaultRestSeconds,
-      warmupRestSeconds: settings.warmupRestSeconds,
-      workingRestSeconds: settings.workingRestSeconds,
-      dropRestSeconds: settings.dropRestSeconds,
-      failureRestSeconds: settings.failureRestSeconds,
+      defaultRestSeconds: settings.defaultRestSeconds || DEFAULT_SETTINGS.workoutDefaults.defaultRestSeconds,
+      warmupRestSeconds: settings.warmupRestSeconds || DEFAULT_SETTINGS.workoutDefaults.warmupRestSeconds,
+      workingRestSeconds: settings.workingRestSeconds || DEFAULT_SETTINGS.workoutDefaults.workingRestSeconds,
+      dropRestSeconds: settings.dropRestSeconds || DEFAULT_SETTINGS.workoutDefaults.dropRestSeconds,
+      failureRestSeconds: settings.failureRestSeconds || DEFAULT_SETTINGS.workoutDefaults.failureRestSeconds,
     },
     ai: {
-      confidenceThreshold: settings.aiConfidenceThreshold,
-      smoothing: settings.aiSmoothing,
-      repSensitivity: settings.aiRepSensitivity,
+      confidenceThreshold: settings.aiConfidenceThreshold || DEFAULT_SETTINGS.ai.confidenceThreshold,
     },
   };
 }
@@ -86,12 +99,18 @@ export async function getOrCreateSettings(): Promise<SettingsDraft> {
   const bodyCollection = database.collections.get('body_stats');
   const settingsCollection = database.collections.get('app_settings');
 
-  const existingProfile = await profileCollection.query().fetch();
-  const existingBody = await bodyCollection.query().fetch();
-  const existingSettings = await settingsCollection.query().fetch();
+  const [profile] = await profileCollection.query().fetch();
+  const [bodyStats] = await bodyCollection.query().fetch();
+  const [settings] = await settingsCollection.query().fetch();
 
-  if (existingProfile[0] && existingBody[0] && existingSettings[0]) {
-    return toDraft(existingProfile[0] as any, existingBody[0] as any, existingSettings[0] as any);
+  if (profile && bodyStats && settings) {
+    const draft = toDraft(profile as any, bodyStats as any, settings as any);
+
+    if (draft.preferences.distanceUnit !== (settings as any).distanceUnit) {
+      await saveSettings(draft);
+    }
+
+    return draft;
   }
 
   await saveSettings(DEFAULT_SETTINGS);
@@ -111,22 +130,32 @@ export async function saveSettings(draft: SettingsDraft) {
 
     if (profile) {
       await (profile as any).update((record: any) => {
+        record.remoteUserId = draft.profile.userId || record.remoteUserId || 'local-demo-user';
+        record.authId = draft.profile.authId || record.authId || 'local-demo-auth';
+        record.email = draft.profile.email || '';
+        record.isLoggedIn = draft.profile.isLoggedIn;
         record.displayName = draft.profile.displayName;
         record.goal = draft.profile.goal;
         record.level = draft.profile.level;
         record.gender = draft.profile.gender;
         record.age = draft.profile.age;
         record.photoUri = draft.profile.photoUri || '';
+        record.lastLoginAt = draft.profile.isLoggedIn ? timestamp : record.lastLoginAt || 0;
         record.updatedAt = timestamp;
       });
     } else {
       await profileCollection.create((record: any) => {
+        record.remoteUserId = draft.profile.userId || 'local-demo-user';
+        record.authId = draft.profile.authId || 'local-demo-auth';
+        record.email = draft.profile.email || '';
+        record.isLoggedIn = draft.profile.isLoggedIn;
         record.displayName = draft.profile.displayName;
         record.goal = draft.profile.goal;
         record.level = draft.profile.level;
         record.gender = draft.profile.gender;
         record.age = draft.profile.age;
         record.photoUri = draft.profile.photoUri || '';
+        record.lastLoginAt = draft.profile.isLoggedIn ? timestamp : 0;
         record.createdAt = timestamp;
         record.updatedAt = timestamp;
       });
@@ -138,6 +167,7 @@ export async function saveSettings(draft: SettingsDraft) {
         record.heightCm = draft.bodyStats.heightCm;
         record.bodyFatPercent = draft.bodyStats.bodyFatPercent;
         record.bodyType = draft.bodyStats.bodyType;
+        record.loggedAt = timestamp;
         record.updatedAt = timestamp;
       });
     } else {
@@ -146,6 +176,8 @@ export async function saveSettings(draft: SettingsDraft) {
         record.heightCm = draft.bodyStats.heightCm;
         record.bodyFatPercent = draft.bodyStats.bodyFatPercent;
         record.bodyType = draft.bodyStats.bodyType;
+        record.loggedAt = timestamp;
+        record.notes = '';
         record.createdAt = timestamp;
         record.updatedAt = timestamp;
       });
@@ -164,8 +196,8 @@ export async function saveSettings(draft: SettingsDraft) {
         record.dropRestSeconds = draft.workoutDefaults.dropRestSeconds;
         record.failureRestSeconds = draft.workoutDefaults.failureRestSeconds;
         record.aiConfidenceThreshold = draft.ai.confidenceThreshold;
-        record.aiSmoothing = draft.ai.smoothing;
-        record.aiRepSensitivity = draft.ai.repSensitivity;
+        record.aiSmoothing = 0;
+        record.aiRepSensitivity = 0;
         record.updatedAt = timestamp;
       });
     } else {
@@ -181,13 +213,50 @@ export async function saveSettings(draft: SettingsDraft) {
         record.dropRestSeconds = draft.workoutDefaults.dropRestSeconds;
         record.failureRestSeconds = draft.workoutDefaults.failureRestSeconds;
         record.aiConfidenceThreshold = draft.ai.confidenceThreshold;
-        record.aiSmoothing = draft.ai.smoothing;
-        record.aiRepSensitivity = draft.ai.repSensitivity;
+        record.aiSmoothing = 0;
+        record.aiRepSensitivity = 0;
         record.createdAt = timestamp;
         record.updatedAt = timestamp;
       });
     }
   });
+}
+
+export async function savePreferencesOnly(preferences: SettingsDraft['preferences']) {
+  const draft = await getOrCreateSettings();
+  draft.preferences = preferences;
+  await saveSettings(draft);
+  return draft;
+}
+
+export async function signInLocalUser(input?: { email?: string; displayName?: string }) {
+  const draft = await getOrCreateSettings();
+  draft.profile.isLoggedIn = true;
+  draft.profile.email = input?.email || draft.profile.email || 'demo@coreset.local';
+  draft.profile.displayName = input?.displayName || draft.profile.displayName || 'Demo User';
+  draft.profile.authId = draft.profile.authId || 'local-demo-auth';
+  draft.profile.userId = draft.profile.userId || 'local-demo-user';
+  await saveSettings(draft);
+  return draft;
+}
+
+export async function signUpLocalUser(input?: { email?: string; displayName?: string }) {
+  const timestamp = now();
+  const draft = await getOrCreateSettings();
+  draft.profile.isLoggedIn = true;
+  draft.profile.email = input?.email || `user-${timestamp}@coreset.local`;
+  draft.profile.displayName = input?.displayName || 'CoreSet User';
+  draft.profile.authId = `local-auth-${timestamp}`;
+  draft.profile.userId = `local-user-${timestamp}`;
+  await saveSettings(draft);
+  return draft;
+}
+
+export async function logoutLocalUser() {
+  const draft = await getOrCreateSettings();
+  draft.profile.isLoggedIn = false;
+  await saveSettings(draft);
+  return draft;
 }
 
 export function formatRestTime(seconds: number) {

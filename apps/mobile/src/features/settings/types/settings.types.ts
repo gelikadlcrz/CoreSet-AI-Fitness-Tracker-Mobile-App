@@ -1,9 +1,13 @@
 export type WeightUnit = 'kg' | 'lbs';
-export type DistanceUnit = 'km' | 'mi';
+export type DistanceUnit = 'm' | 'in';
 export type AppTheme = 'dark' | 'light';
 
 export type SettingsDraft = {
   profile: {
+    isLoggedIn: boolean;
+    userId?: string;
+    authId?: string;
+    email?: string;
     displayName: string;
     goal: string;
     level: string;
@@ -37,7 +41,5 @@ export type SettingsDraft = {
 
   ai: {
     confidenceThreshold: number;
-    smoothing: number;
-    repSensitivity: number;
   };
 };

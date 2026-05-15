@@ -33,34 +33,34 @@
       ]
     },
     "plugins": [
-  "expo-router",
-  "./plugins/withSimdjson",
-  [
-    "expo-splash-screen",
-    {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0D0D0D"
-    }
-  ],
-  [
-    "react-native-vision-camera",
-    {
-      "cameraPermissionText": "CoreSet needs camera access to count your reps on-device.",
-      "enableMicrophonePermission": false
-    }
-  ],
-  [
-    "react-native-fast-tflite",
-    {
-      "enableCoreMLDelegate": true
-    }
-  ]
-  ],
+      "expo-router",
+      "./plugins/withSimdjson",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0D0D0D"
+        }
+      ],
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "CoreSet needs camera access to count your reps on-device.",
+          "enableMicrophonePermission": false
+        }
+      ],
+      [
+        "react-native-fast-tflite",
+        {
+          "enableCoreMLDelegate": true
+        }
+      ],
+      "expo-font"
+    ],
     "experiments": {
       "typedRoutes": true,
       "newArchEnabled": true
-
     }
   }
 }
