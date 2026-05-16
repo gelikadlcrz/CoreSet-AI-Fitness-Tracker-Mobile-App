@@ -1,12 +1,35 @@
-import { MOCK_ANALYTICS_DATA } from '../mock/mockAnalytics';
 import {
   AnalyticsDataset,
+  AnalyticsQueryParams,
   ExportAnalyticsOptions,
   SetHistoryItem,
 } from '../types/analytics.types';
+import { mapAnalyticsRowsToDataset } from './analyticsMapper';
+import { AnalyticsRepository, MockAnalyticsRepository } from './analyticsRepository';
 
-export async function getAnalyticsDataset(): Promise<AnalyticsDataset> {
-  return Promise.resolve(MOCK_ANALYTICS_DATA);
+const DEFAULT_QUERY: AnalyticsQueryParams = {
+  userId: 'demo_user_001',
+  range: '30d',
+  exerciseId: null,
+  includeManual: true,
+};
+
+let analyticsRepository: AnalyticsRepository = MockAnalyticsRepository;
+
+export function setAnalyticsRepository(repository: AnalyticsRepository) {
+  analyticsRepository = repository;
+}
+
+export async function getAnalyticsDataset(
+  params: Partial<AnalyticsQueryParams> = {},
+): Promise<AnalyticsDataset> {
+  const query: AnalyticsQueryParams = {
+    ...DEFAULT_QUERY,
+    ...params,
+  };
+
+  const rows = await analyticsRepository.getRows(query);
+  return mapAnalyticsRowsToDataset(rows, query);
 }
 
 export async function exportAnalyticsData(

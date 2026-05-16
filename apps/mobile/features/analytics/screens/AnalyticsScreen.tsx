@@ -40,6 +40,14 @@ export default function AnalyticsScreen() {
           onChangeRange={analytics.setSelectedRange}
         />
 
+        {analytics.isLoading ? (
+          <Text style={styles.helperText}>Loading analytics...</Text>
+        ) : null}
+
+        {analytics.error ? (
+          <Text style={styles.errorText}>{analytics.error}</Text>
+        ) : null}
+
         <AnalyticsChartCard
           points={analytics.filteredPoints}
           selectedMetric={analytics.selectedMetric}
@@ -106,5 +114,17 @@ const styles = StyleSheet.create({
     color: UI.text,
     fontSize: 13,
     fontWeight: '800',
+  },
+  helperText: {
+    color: UI.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  errorText: {
+    color: '#FF6B6B',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 12,
   },
 });

@@ -76,6 +76,10 @@ function getLatestDate(points: AnalyticsPoint[], recentSets: SetHistoryItem[]) {
     ...recentSets.map((set) => new Date(set.performedAt).getTime()),
   ];
 
+  if (timestamps.length === 0) {
+    return new Date();
+  }
+
   return new Date(Math.max(...timestamps));
 }
 

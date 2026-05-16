@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AnalyticsDateRange,
+  AnalyticsDataset,
   AnalyticsMetric,
   ExportFormat,
 } from '../types/analytics.types';
 import { analyticsInitialState } from '../store/analyticsStore';
+import { getAnalyticsDataset } from '../services/analyticsService';
 import {
   filterAnalyticsPointsByRange,
   filterSetHistoryByRange,
@@ -17,8 +19,50 @@ export function useAnalytics() {
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('csv');
   const [excludeManualSets, setExcludeManualSets] = useState(false);
+  const [dataset, setDataset] = useState<AnalyticsDataset>(
+    analyticsInitialState.dataset,
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const dataset = analyticsInitialState.dataset;
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadAnalytics() {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const nextDataset = await getAnalyticsDataset({
+          userId: 'demo_user_001',
+          range: selectedRange,
+          includeManual: true,
+        });
+
+        if (isMounted) {
+          setDataset(nextDataset);
+        }
+      } catch (loadError) {
+        if (isMounted) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Failed to load analytics data.',
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadAnalytics();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedRange]);
 
   const filteredPoints = useMemo(
     () =>
@@ -55,5 +99,7 @@ export function useAnalytics() {
     setExcludeManualSets,
     filteredPoints,
     filteredSets,
+    isLoading,
+    error,
   };
 }
