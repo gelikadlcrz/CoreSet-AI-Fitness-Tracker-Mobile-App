@@ -1,30 +1,27 @@
 /**
  * CameraView (capture/camera/CameraView.tsx)
  *
- * Main camera screen.  Handles:
+ * Main camera screen. Handles:
  *  - Camera permission flow
- *  - react-native-vision-camera setup
- *  - Wiring useCapture frame processor
+ *  - MediaPipe camera setup
  *  - RepOverlay rendering
+ *  - SkeletonOverlay rendering
  *  - Start / Stop / Reset controls
  */
 
 import React, { useEffect } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   StyleSheet,
   Text,
   View,
-  Platform,
-  Alert,
 } from 'react-native';
-import {
-  Camera,
-  useCameraDevice,
-  useCameraPermission,
-  useCameraFormat,
-} from 'react-native-vision-camera';
+
+import { useCameraPermission } from 'react-native-vision-camera';
+
+import { MediapipeCamera } from 'react-native-mediapipe/src/shared/mediapipeCamera';
 
 import { useCapture } from '../hooks/useCapture';
 import { RepOverlay } from '../overlays/RepOverlay';
@@ -32,23 +29,21 @@ import { SkeletonOverlay } from '../overlays/SkeletonOverlay';
 
 export default function CameraView() {
   const { hasPermission, requestPermission } = useCameraPermission();
-  const device = useCameraDevice('front');
-  const format = useCameraFormat(device, [
-    { fps: 30 },
-    { videoResolution: { width: 640, height: 480 } },
-  ]);
 
-  // Use the actual fps the format supports, not hardcoded 30
-  const targetFps = format?.maxFps ? Math.min(30, format.maxFps) : undefined;
+  const {
+    state,
+    mediaPipeSolution,
+    startCapture,
+    stopCapture,
+    resetReps,
+  } = useCapture();
 
-  const { state, frameProcessor, startCapture, stopCapture, resetReps } = useCapture();
-
-  // Request camera permission on mount
   useEffect(() => {
-    if (!hasPermission) requestPermission();
+    if (!hasPermission) {
+      requestPermission();
+    }
   }, [hasPermission, requestPermission]);
 
-  // Show error alert
   useEffect(() => {
     if (state.error) {
       Alert.alert('Capture Error', state.error);
@@ -59,17 +54,10 @@ export default function CameraView() {
     return (
       <View style={styles.center}>
         <Text style={styles.permText}>Camera permission required.</Text>
+
         <Pressable style={styles.button} onPress={requestPermission}>
           <Text style={styles.buttonText}>Grant Permission</Text>
         </Pressable>
-      </View>
-    );
-  }
-
-  if (!device) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.permText}>No camera device found.</Text>
       </View>
     );
   }
@@ -78,31 +66,28 @@ export default function CameraView() {
     return (
       <View style={styles.center}>
         <ActivityIndicator color="#00E5FF" size="large" />
-        <Text style={[styles.permText, { marginTop: 16 }]}>Loading AI model…</Text>
+        <Text style={[styles.permText, { marginTop: 16 }]}>
+          Loading AI model…
+        </Text>
       </View>
     );
   }
 
   return (
     <View style={styles.root}>
-      {/* Camera feed */}
-      <Camera
+      <MediapipeCamera
         style={StyleSheet.absoluteFill}
-        device={device}
-        isActive={true}
-        frameProcessor={frameProcessor}
-        format={format}
-        fps={targetFps}
-        photo={false}
-        video={false}
-        audio={false}
-        pixelFormat="rgb"
-        videoStabilizationMode="auto"
+        solution={mediaPipeSolution}
+        activeCamera="front"
+        resizeMode="cover"
       />
 
-      <SkeletonOverlay landmarks={state.landmarks} frameSize={state.frameSize} mirror />
+      <SkeletonOverlay
+        landmarks={state.landmarks}
+        frameSize={state.frameSize}
+        mirror
+      />
 
-      {/* Overlay — reps, class, FPS */}
       <RepOverlay
         repCount={state.repCount}
         exerciseClass={state.exerciseClass}
@@ -111,7 +96,6 @@ export default function CameraView() {
         fps={state.fps}
       />
 
-      {/* Bottom controls */}
       <View style={styles.controls}>
         <Pressable
           style={[styles.ctrlBtn, styles.resetBtn]}
@@ -142,6 +126,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
+
   center: {
     flex: 1,
     backgroundColor: '#0A0A0F',
@@ -149,12 +134,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
   },
+
   permText: {
     color: '#FFFFFF99',
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 24,
   },
+
   button: {
     marginTop: 20,
     backgroundColor: '#00E5FF',
@@ -162,12 +149,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
   },
+
   buttonText: {
     color: '#000',
     fontWeight: '700',
     fontSize: 15,
     letterSpacing: 1,
   },
+
   controls: {
     position: 'absolute',
     bottom: 48,
@@ -179,41 +168,41 @@ const styles = StyleSheet.create({
     gap: 20,
     paddingHorizontal: 32,
   },
+
   ctrlBtn: {
-    paddingHorizontal: 24,
+    minWidth: 110,
     paddingVertical: 14,
+    paddingHorizontal: 18,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   resetBtn: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.24)',
   },
+
   mainBtn: {
-    flex: 1,
     backgroundColor: '#00E5FF',
-    shadowColor: '#00E5FF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-    elevation: 8,
   },
+
   stopBtn: {
-    backgroundColor: '#FF4444',
-    shadowColor: '#FF4444',
+    backgroundColor: '#FF3B30',
   },
+
   ctrlBtnText: {
-    color: '#FFFFFF',
+    color: '#FFF',
+    fontSize: 14,
     fontWeight: '700',
-    fontSize: 13,
-    letterSpacing: 2,
+    letterSpacing: 1,
   },
+
   mainBtnText: {
     color: '#000',
-    fontWeight: '800',
-    fontSize: 16,
-    letterSpacing: 2,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 1,
   },
 });

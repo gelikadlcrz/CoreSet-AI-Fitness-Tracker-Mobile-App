@@ -94,14 +94,14 @@ function getPoseQuality(landmarks: PoseLandmark[]) {
   }).length;
 
   const requiredJoints = [
-    11, // left shoulder
-    12, // right shoulder
-    13, // left elbow
-    14, // right elbow
-    15, // left wrist
-    16, // right wrist
-    23, // left hip
-    24, // right hip
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    23,
+    24,
   ];
 
   const requiredVisible = requiredJoints.every((index) => {
@@ -136,12 +136,7 @@ function toOverlayPoints(
     const visibility = point.visibility ?? 1;
     const presence = point.presence ?? 1;
 
-    /*
-      MediaPipe landmarks are coming from a landscape camera frame,
-      while the screen is portrait.
-
-      Rotate landmark coordinates into portrait view.
-    */
+    // This is the mapping that fixed the sideways/perpendicular skeleton.
     const rotatedX = 1 - point.y;
     const rotatedY = point.x;
 
@@ -152,6 +147,7 @@ function toOverlayPoints(
     };
   });
 }
+
 function SkeletonOverlay({
   landmarks,
   width,
