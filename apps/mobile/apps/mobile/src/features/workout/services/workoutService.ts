@@ -38,33 +38,6 @@ function parseSecondaryMuscles(value: unknown): string[] {
   return [];
 }
 
-function parseInstructions(value: unknown): string[] {
-  if (!value) return [];
-
-  if (Array.isArray(value)) {
-    return value.map(item => String(item)).filter(Boolean);
-  }
-
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return [];
-
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) {
-        return parsed.map(item => String(item)).filter(Boolean);
-      }
-    } catch {
-      return trimmed
-        .split('||')
-        .map(item => item.trim())
-        .filter(Boolean);
-    }
-  }
-
-  return [];
-}
-
 async function buildExerciseHistory(exerciseId: string) {
   const sets = await database.collections
     .get('workout_sets')
@@ -551,33 +524,21 @@ export async function listAvailableExercises(): Promise<ExercisePickerItem[]> {
   const items: ExercisePickerItem[] = [];
 
   for (const exercise of exercises as any[]) {
-    const thumbnailUrl = exercise.thumbnailUrl || exercise.imageUrl || exercise.gifUrl || '';
-    const description = exercise.description || exercise.notes || '';
-    const targetMuscle = exercise.targetMuscle || exercise.primaryMuscle || exercise.muscleGroup || '';
-
     items.push({
       id: exercise.id,
-      exerciseId: exercise.exerciseId || '',
-      exerciseDbId: exercise.exerciseDbId || '',
       name: exercise.name,
-      bodyPart: exercise.bodyPart || '',
-      targetMuscle,
       equipment: exercise.equipment || exercise.equipmentType || '',
-      primaryMuscle: targetMuscle,
-      muscleGroup: exercise.muscleGroup || targetMuscle || '',
+      primaryMuscle: exercise.primaryMuscle || exercise.muscleGroup || '',
+      muscleGroup: exercise.muscleGroup || exercise.primaryMuscle || '',
       secondaryMuscles: parseSecondaryMuscles(exercise.secondaryMusclesJson),
       equipmentType: exercise.equipmentType || exercise.equipment || '',
-      movementPattern: exercise.movementPattern || exercise.bodyPart || '',
-      notes: exercise.notes || description,
-      description,
-      instructions: parseInstructions(exercise.instructionsJson),
-      imageUrl: exercise.imageUrl || '',
-      gifUrl: exercise.gifUrl || '',
+      movementPattern: exercise.movementPattern || '',
+      notes: exercise.notes || '',
       isAiTracked: !!exercise.isAiTracked || isAiTrackedByName(exercise.name),
       isBodyweight: !!exercise.isBodyweight,
       isCustom: !!exercise.isCustom,
-      thumbnailUrl,
-      demoVideoUrl: exercise.demoVideoUrl || exercise.gifUrl || '',
+      thumbnailUrl: exercise.thumbnailUrl || '',
+      demoVideoUrl: exercise.demoVideoUrl || '',
       aiExerciseClass: exercise.aiExerciseClass || '',
       history: await buildExerciseHistory(exercise.id),
     });

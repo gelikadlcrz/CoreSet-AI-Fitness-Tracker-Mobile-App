@@ -5,10 +5,17 @@ class Exercise extends Model {
   static table = 'exercises';
 
   @field('exercise_id') exerciseId!: string;
+  @field('exercise_db_id') exerciseDbId!: string;
   @field('name') name!: string;
+  @field('body_part') bodyPart!: string;
+  @field('target_muscle') targetMuscle!: string;
   @field('muscle_group') muscleGroup!: string;
   @field('equipment') equipment!: string;
   @field('notes') notes!: string;
+  @field('description') description!: string;
+  @field('instructions_json') instructionsJson!: string;
+  @field('image_url') imageUrl!: string;
+  @field('gif_url') gifUrl!: string;
   @field('primary_muscle') primaryMuscle!: string;
   @field('secondary_muscles_json') secondaryMusclesJson!: string;
   @field('equipment_type') equipmentType!: string;

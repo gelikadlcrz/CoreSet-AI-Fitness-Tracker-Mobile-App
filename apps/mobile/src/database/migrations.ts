@@ -261,5 +261,23 @@ export const migrations = schemaMigrations({
       ],
     },
 
+    {
+      toVersion: 5,
+      steps: [
+        addColumns({
+          table: 'exercises',
+          columns: [
+            { name: 'exercise_db_id', type: 'string', isOptional: true },
+            { name: 'body_part', type: 'string', isOptional: true },
+            { name: 'target_muscle', type: 'string', isOptional: true },
+            { name: 'description', type: 'string', isOptional: true },
+            { name: 'instructions_json', type: 'string', isOptional: true },
+            { name: 'image_url', type: 'string', isOptional: true },
+            { name: 'gif_url', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
+
   ],
 });

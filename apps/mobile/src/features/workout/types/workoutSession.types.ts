@@ -51,7 +51,11 @@ export type ExerciseHistorySummary = {
 
 export type ExercisePickerItem = {
   id: string;
+  exerciseId?: string;
+  exerciseDbId?: string;
   name: string;
+  bodyPart?: string;
+  targetMuscle?: string;
   equipment?: string;
   primaryMuscle?: string;
   muscleGroup?: string;
@@ -59,11 +63,15 @@ export type ExercisePickerItem = {
   equipmentType?: string;
   movementPattern?: string;
   notes?: string;
+  description?: string;
+  instructions?: string[];
+  imageUrl?: string;
+  gifUrl?: string;
+  thumbnailUrl?: string;
+  demoVideoUrl?: string;
   isAiTracked?: boolean;
   isBodyweight?: boolean;
   isCustom?: boolean;
-  thumbnailUrl?: string;
-  demoVideoUrl?: string;
   aiExerciseClass?: string;
   history?: ExerciseHistorySummary;
 };

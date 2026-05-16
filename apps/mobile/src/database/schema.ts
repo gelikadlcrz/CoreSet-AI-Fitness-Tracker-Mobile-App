@@ -1,17 +1,24 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 4,
+  version: 5,
 
   tables: [
     tableSchema({
       name: 'exercises',
       columns: [
         { name: 'exercise_id', type: 'string' },
+        { name: 'exercise_db_id', type: 'string', isOptional: true },
         { name: 'name', type: 'string' },
+        { name: 'body_part', type: 'string', isOptional: true },
+        { name: 'target_muscle', type: 'string', isOptional: true },
         { name: 'muscle_group', type: 'string' },
         { name: 'equipment', type: 'string', isOptional: true },
         { name: 'notes', type: 'string', isOptional: true },
+        { name: 'description', type: 'string', isOptional: true },
+        { name: 'instructions_json', type: 'string', isOptional: true },
+        { name: 'image_url', type: 'string', isOptional: true },
+        { name: 'gif_url', type: 'string', isOptional: true },
         { name: 'primary_muscle', type: 'string', isOptional: true },
         { name: 'secondary_muscles_json', type: 'string', isOptional: true },
         { name: 'equipment_type', type: 'string', isOptional: true },

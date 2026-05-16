@@ -256,7 +256,7 @@ function ExerciseDetailModal({
 
             <Text style={[styles.detailName, { color: theme.text }]}>{exercise.name}</Text>
             <Text style={[styles.detailMeta, { color: theme.textMuted }]}>
-              {[exercise.targetMuscle || exercise.primaryMuscle, exercise.bodyPart, exercise.equipmentType || exercise.equipment, exercise.movementPattern]
+              {[exercise.primaryMuscle, exercise.equipmentType || exercise.equipment, exercise.movementPattern]
                 .filter(Boolean)
                 .join(' • ') || 'Exercise'}
             </Text>
@@ -279,31 +279,15 @@ function ExerciseDetailModal({
             <View style={styles.detailSection}> 
               <Text style={[styles.detailSectionTitle, { color: theme.text }]}>Description</Text>
               <Text style={[styles.detailBodyText, { color: theme.textSecondary }]}> 
-                {exercise.description || exercise.notes || 'No exercise description has been provided by the API yet.'}
+                {exercise.notes || 'No exercise description has been provided by the API yet.'}
               </Text>
             </View>
-
-            {!!exercise.instructions?.length && (
-              <View style={styles.detailSection}> 
-                <Text style={[styles.detailSectionTitle, { color: theme.text }]}>Instructions</Text>
-                {exercise.instructions.slice(0, 6).map((instruction, index) => (
-                  <Text key={`${exercise.id}-instruction-${index}`} style={[styles.detailBodyText, { color: theme.textSecondary }]}> 
-                    {index + 1}. {instruction}
-                  </Text>
-                ))}
-              </View>
-            )}
 
             <View style={styles.detailSection}> 
               <Text style={[styles.detailSectionTitle, { color: theme.text }]}>Muscles and Equipment</Text>
               <Text style={[styles.detailBodyText, { color: theme.textSecondary }]}> 
                 Muscles: {muscles.length ? muscles.join(', ') : 'Not specified'}
               </Text>
-              {!!exercise.bodyPart && (
-                <Text style={[styles.detailBodyText, { color: theme.textSecondary }]}> 
-                  Body part: {exercise.bodyPart}
-                </Text>
-              )}
               <Text style={[styles.detailBodyText, { color: theme.textSecondary }]}> 
                 Equipment: {exercise.equipmentType || exercise.equipment || 'Not specified'}
               </Text>
@@ -434,7 +418,7 @@ function ExercisePickerModal({
                     {exercise.name}
                   </Text>
                   <Text style={[styles.exercisePickerMeta, { color: theme.textMuted }]} numberOfLines={2}>
-                    {[exercise.targetMuscle || exercise.primaryMuscle, exercise.equipmentType || exercise.equipment, exercise.isAiTracked ? 'AI-tracked' : 'Manual']
+                    {[exercise.primaryMuscle, exercise.equipmentType || exercise.equipment, exercise.isAiTracked ? 'AI-tracked' : 'Manual']
                       .filter(Boolean)
                       .join(' • ')}
                   </Text>
@@ -904,7 +888,13 @@ export default function ActiveWorkoutSessionScreen() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [replaceTarget, setReplaceTarget] = useState<WorkoutExerciseVM | null>(null);
 
-  const loadLocal = async () => {
+  const load = async () => {
+    try {
+      await pullExercises();
+    } catch (error) {
+      console.log('Exercise sync skipped', error);
+    }
+
     const [activeSession, exercises] = await Promise.all([
       getOrCreateActiveWorkoutSession(),
       listAvailableExercises(),
@@ -912,21 +902,6 @@ export default function ActiveWorkoutSessionScreen() {
 
     setSession(activeSession);
     setAvailableExercises(exercises);
-  };
-
-  const refreshFromApi = async () => {
-    try {
-      await pullExercises();
-      const exercises = await listAvailableExercises();
-      setAvailableExercises(exercises);
-    } catch (error) {
-      console.log('Exercise sync skipped', error);
-    }
-  };
-
-  const load = async () => {
-    await loadLocal();
-    refreshFromApi();
   };
 
   useEffect(() => {
@@ -951,16 +926,14 @@ export default function ActiveWorkoutSessionScreen() {
     await load();
   };
 
-  const handleReplaceRequest = async (exercise: WorkoutExerciseVM) => {
+  const handleReplaceRequest = (exercise: WorkoutExerciseVM) => {
     setReplaceTarget(exercise);
     setPickerVisible(true);
-    await refreshFromApi();
   };
 
-  const handleOpenAddExercise = async () => {
+  const handleOpenAddExercise = () => {
     setReplaceTarget(null);
     setPickerVisible(true);
-    await refreshFromApi();
   };
 
   const handleFinish = () => {
