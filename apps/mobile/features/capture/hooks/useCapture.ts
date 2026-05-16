@@ -1,22 +1,38 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
-import { useFrameProcessor, type Frame, runAtTargetFps } from 'react-native-vision-camera';
-import { useSharedValue, Worklets } from 'react-native-worklets-core';
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { Dimensions } from 'react-native';
+
+import { usePoseDetection } from 'react-native-mediapipe/src/poseDetection';
 
 import {
-  loadBlazePose,
-  frameToInputTensor,
-  detectPose,
-  isFrameUsable,
-  type RawLandmarks,
-} from '../pose/BlazePoseDetector';
-import { normalisePose } from '../../../ml/preprocessing/normalizePose';
+  Delegate,
+  RunningMode,
+} from 'react-native-mediapipe/src/shared/types';
+
+import {
+  normalisePose,
+  type Landmark3D,
+} from '../../../ml/preprocessing/normalizePose';
+
 import { TemporalBuffer, WINDOW_SIZE } from '../utils/temporalBuffer';
 import { STGCNRunner, type ExerciseClass } from '../inference/STGCNRunner';
 import { RepCounter, type RepEvent } from '../postprocessing/RepCounter';
 
+const MODEL_NAME = 'pose_landmarker_full.task';
+
 const STRIDE = Math.floor(WINDOW_SIZE / 2);
 const LANDMARK_UI_UPDATE_MS = 80;
 const LANDMARK_SMOOTHING_ALPHA = 0.35;
+
+const MIN_CLASS_CONFIDENCE_FOR_REPS = 0.7;
+const MIN_STABLE_CLASS_WINDOWS = 3;
+const MIN_WINDOW_MOTION_FOR_REPS = 0.018;
+
+type RawLandmarks = Landmark3D[];
+
+type PosePacket = {
+  imageLandmarks: RawLandmarks;
+  worldLandmarks: RawLandmarks;
+};
 
 export interface CaptureState {
   isReady: boolean;
@@ -42,25 +58,177 @@ const initialState: CaptureState = {
   frameSize: null,
 };
 
-function smoothLandmarks(prev: RawLandmarks | null, current: RawLandmarks): RawLandmarks {
-  if (!prev || prev.length !== current.length) return current;
+function isLandmarkArray(value: any): value is RawLandmarks {
+  return (
+    Array.isArray(value) &&
+    value.length === 33 &&
+    typeof value[0]?.x === 'number' &&
+    typeof value[0]?.y === 'number'
+  );
+}
 
-  return current.map((lm, idx) => {
-    const prevLm = prev[idx];
-    if (!Number.isFinite(lm.x) || !Number.isFinite(lm.y) || !Number.isFinite(lm.z)) {
-      return prevLm;
+function toRawLandmarks(value: any): RawLandmarks {
+  return value.map((point: any) => ({
+    x: point.x,
+    y: point.y,
+    z: point.z ?? 0,
+    visibility: point.visibility ?? point.presence ?? 1,
+  }));
+}
+
+function extractMediaPipePosePacket(result: any): PosePacket | null {
+  const imageCandidates = [
+    result?.results?.[0]?.landmarks?.[0],
+    result?.results?.[0]?.poseLandmarks?.[0],
+    result?.landmarks?.[0],
+    result?.poseLandmarks?.[0],
+    result?.landmarks,
+    result?.poseLandmarks,
+  ];
+
+  const worldCandidates = [
+    result?.results?.[0]?.worldLandmarks?.[0],
+    result?.worldLandmarks?.[0],
+    result?.worldLandmarks,
+  ];
+
+  let imageLandmarks: RawLandmarks | null = null;
+  let worldLandmarks: RawLandmarks | null = null;
+
+  for (const item of imageCandidates) {
+    if (isLandmarkArray(item)) {
+      imageLandmarks = toRawLandmarks(item);
+      break;
     }
-    if (!Number.isFinite(prevLm.x) || !Number.isFinite(prevLm.y) || !Number.isFinite(prevLm.z)) {
-      return lm;
+  }
+
+  for (const item of worldCandidates) {
+    if (isLandmarkArray(item)) {
+      worldLandmarks = toRawLandmarks(item);
+      break;
+    }
+  }
+
+  if (!imageLandmarks || !worldLandmarks) {
+    return null;
+  }
+
+  return {
+    imageLandmarks,
+    worldLandmarks,
+  };
+}
+
+function isMediaPipeFrameUsable(landmarks: RawLandmarks): boolean {
+  if (landmarks.length !== 33) {
+    return false;
+  }
+
+  const reliableCount = landmarks.filter((point) => {
+    const visibility = point.visibility ?? 1;
+
+    return visibility >= 0.35;
+  }).length;
+
+  const requiredJoints = [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    23,
+    24,
+  ];
+
+  const requiredVisible = requiredJoints.every((index) => {
+    const point = landmarks[index];
+
+    return (
+      Number.isFinite(point?.x) &&
+      Number.isFinite(point?.y) &&
+      Number.isFinite(point?.z) &&
+      (point?.visibility ?? 0) >= 0.3
+    );
+  });
+
+  return reliableCount >= 16 && requiredVisible;
+}
+
+function smoothLandmarks(
+  previous: RawLandmarks | null,
+  current: RawLandmarks
+): RawLandmarks {
+  if (!previous || previous.length !== current.length) {
+    return current;
+  }
+
+  return current.map((landmark, index) => {
+    const previousLandmark = previous[index];
+
+    if (
+      !Number.isFinite(landmark.x) ||
+      !Number.isFinite(landmark.y) ||
+      !Number.isFinite(landmark.z)
+    ) {
+      return previousLandmark;
+    }
+
+    if (
+      !Number.isFinite(previousLandmark.x) ||
+      !Number.isFinite(previousLandmark.y) ||
+      !Number.isFinite(previousLandmark.z)
+    ) {
+      return landmark;
     }
 
     return {
-      x: prevLm.x + (lm.x - prevLm.x) * LANDMARK_SMOOTHING_ALPHA,
-      y: prevLm.y + (lm.y - prevLm.y) * LANDMARK_SMOOTHING_ALPHA,
-      z: prevLm.z + (lm.z - prevLm.z) * LANDMARK_SMOOTHING_ALPHA,
-      visibility: ((prevLm.visibility ?? 0) * (1 - LANDMARK_SMOOTHING_ALPHA)) + ((lm.visibility ?? 0) * LANDMARK_SMOOTHING_ALPHA),
+      x:
+        previousLandmark.x +
+        (landmark.x - previousLandmark.x) * LANDMARK_SMOOTHING_ALPHA,
+      y:
+        previousLandmark.y +
+        (landmark.y - previousLandmark.y) * LANDMARK_SMOOTHING_ALPHA,
+      z:
+        previousLandmark.z +
+        (landmark.z - previousLandmark.z) * LANDMARK_SMOOTHING_ALPHA,
+      visibility:
+        (previousLandmark.visibility ?? 0) * (1 - LANDMARK_SMOOTHING_ALPHA) +
+        (landmark.visibility ?? 0) * LANDMARK_SMOOTHING_ALPHA,
     };
   });
+}
+
+function computeFeatureMotion(
+  previous: Float32Array | null,
+  current: Float32Array
+): number {
+  if (!previous || previous.length !== current.length) {
+    return 0;
+  }
+
+  let total = 0;
+  let count = 0;
+
+  for (let index = 0; index < current.length; index++) {
+    const prevValue = previous[index];
+    const currentValue = current[index];
+
+    if (Number.isFinite(prevValue) && Number.isFinite(currentValue)) {
+      total += Math.abs(currentValue - prevValue);
+      count++;
+    }
+  }
+
+  return count > 0 ? total / count : 0;
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 export function useCapture() {
@@ -69,175 +237,329 @@ export function useCapture() {
   const bufferRef = useRef(new TemporalBuffer(WINDOW_SIZE));
   const repCounterRef = useRef(new RepCounter());
   const stgcnRunnerRef = useRef(STGCNRunner.getInstance());
+
   const frameIndexRef = useRef(0);
   const windowStartRef = useRef(0);
   const fpsTimestampsRef = useRef<number[]>([]);
   const inferenceInFlightRef = useRef(false);
-  const smoothedLandmarksRef = useRef<RawLandmarks | null>(null);
+
+  const smoothedModelLandmarksRef = useRef<RawLandmarks | null>(null);
+  const smoothedOverlayLandmarksRef = useRef<RawLandmarks | null>(null);
+
+  const previousFeatureVectorRef = useRef<Float32Array | null>(null);
+  const motionScoresRef = useRef<number[]>([]);
+
   const lastLandmarkUiUpdateRef = useRef(0);
-  const poseInFlight = useSharedValue(false);
+  const isRunningRef = useRef(false);
+
+  const stableClassRef = useRef<ExerciseClass | null>(null);
+  const stableClassCountRef = useRef(0);
+  const lastWindowMotionRef = useRef(0);
+
+  useEffect(() => {
+    isRunningRef.current = state.isRunning;
+  }, [state.isRunning]);
 
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([loadBlazePose(), stgcnRunnerRef.current.load()])
+    stgcnRunnerRef.current
+      .load()
       .then(() => {
-        if (!cancelled) setState(s => ({ ...s, isReady: true }));
-      })
-      .catch(err => {
         if (!cancelled) {
-          setState(s => ({ ...s, error: `Model load failed: ${err?.message ?? err}` }));
+          setState((currentState) => ({
+            ...currentState,
+            isReady: true,
+          }));
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setState((currentState) => ({
+            ...currentState,
+            error: `Model load failed: ${error?.message ?? error}`,
+          }));
         }
       });
 
-    const unsubRep = repCounterRef.current.onRep((event: RepEvent) => {
-      setState(s => ({ ...s, repCount: event.repNumber }));
+    const unsubscribeRep = repCounterRef.current.onRep((event: RepEvent) => {
+      setState((currentState) => ({
+        ...currentState,
+        repCount: event.repNumber,
+      }));
     });
 
     return () => {
       cancelled = true;
-      unsubRep();
+      unsubscribeRep();
     };
   }, []);
 
-  const updateClassification = useCallback((exerciseClass: ExerciseClass, confidence: number) => {
-    setState(s => ({ ...s, exerciseClass, classConfidence: confidence }));
-  }, []);
+  const updateClassification = useCallback(
+    (exerciseClass: ExerciseClass, confidence: number) => {
+      setState((currentState) => ({
+        ...currentState,
+        exerciseClass,
+        classConfidence: confidence,
+      }));
+    },
+    []
+  );
 
   const updateFps = useCallback((fps: number) => {
-    setState(s => ({ ...s, fps }));
+    setState((currentState) => ({
+      ...currentState,
+      fps,
+    }));
   }, []);
 
-  const reportError = useCallback((msg: string) => {
-    setState(s => ({ ...s, error: msg }));
+  const reportError = useCallback((message: string) => {
+    setState((currentState) => ({
+      ...currentState,
+      error: message,
+    }));
   }, []);
-
-  const onLandmarksReady = useCallback(
-    (landmarks: RawLandmarks, frameSize: { width: number; height: number }) => {
-      poseInFlight.value = false;
-
-      if (!isFrameUsable(landmarks)) return;
-
-      const smoothedLandmarks = smoothLandmarks(smoothedLandmarksRef.current, landmarks);
-      smoothedLandmarksRef.current = smoothedLandmarks;
-
-      const featureVec = normalisePose(smoothedLandmarks);
-      bufferRef.current.push(featureVec);
-
-      const frameIdx = ++frameIndexRef.current;
-      const now = Date.now();
-
-      if (now - lastLandmarkUiUpdateRef.current >= LANDMARK_UI_UPDATE_MS) {
-        lastLandmarkUiUpdateRef.current = now;
-        setState(s => ({ ...s, landmarks: smoothedLandmarks, frameSize }));
-      }
-
-      fpsTimestampsRef.current.push(now);
-      fpsTimestampsRef.current = fpsTimestampsRef.current.filter(t => now - t < 1000);
-      if (frameIdx % 15 === 0) {
-        updateFps(fpsTimestampsRef.current.length);
-      }
-
-      if (
-        frameIdx % STRIDE === 0 &&
-        bufferRef.current.size >= WINDOW_SIZE &&
-        !inferenceInFlightRef.current
-      ) {
-        inferenceInFlightRef.current = true;
-        const windowTensor = bufferRef.current.getWindow();
-        const windowStart = windowStartRef.current;
-        windowStartRef.current = frameIdx;
-        runStgcn(windowTensor, windowStart);
-      }
-    },
-    [updateFps],
-  );
-
-  const runBlazePoseAsync = useCallback(
-    async (frame: Frame) => {
-      try {
-        const frameSize = { width: frame.width, height: frame.height };
-        const inputTensor = await frameToInputTensor(frame);
-        const landmarks = await detectPose(inputTensor);
-        onLandmarksReady(landmarks, frameSize);
-      } catch (e: any) {
-        poseInFlight.value = false;
-        reportError(e?.message ?? 'BlazePose inference error');
-      }
-    },
-    [onLandmarksReady, reportError],
-  );
 
   const runStgcn = useCallback(
     async (windowTensor: Float32Array, windowStart: number) => {
       try {
         const result = await stgcnRunnerRef.current.run(windowTensor);
         const confidence = Math.max(...result.classProbs);
+
+        if (stableClassRef.current === result.exerciseClass) {
+          stableClassCountRef.current += 1;
+        } else {
+          stableClassRef.current = result.exerciseClass;
+          stableClassCountRef.current = 1;
+        }
+
         updateClassification(result.exerciseClass, confidence);
-        repCounterRef.current.processWindow(result.densityMap, windowStart);
-      } catch (e: any) {
-        reportError(e?.message ?? 'ST-GCN inference error');
+
+        const isStableClass =
+          stableClassCountRef.current >= MIN_STABLE_CLASS_WINDOWS;
+
+        const isConfident = confidence >= MIN_CLASS_CONFIDENCE_FOR_REPS;
+        const hasRealMotion =
+          lastWindowMotionRef.current >= MIN_WINDOW_MOTION_FOR_REPS;
+
+        if (isStableClass && isConfident && hasRealMotion) {
+          repCounterRef.current.processWindow(result.densityMap, windowStart);
+        } else {
+          console.log(
+            `Rep skipped: class=${
+              result.exerciseClass
+            }, confidence=${confidence.toFixed(2)}, stable=${
+              stableClassCountRef.current
+            }, motion=${lastWindowMotionRef.current.toFixed(4)}`
+          );
+        }
+      } catch (error: any) {
+        reportError(error?.message ?? 'ST-GCN inference error');
       } finally {
         inferenceInFlightRef.current = false;
       }
     },
-    [updateClassification, reportError],
+    [updateClassification, reportError]
   );
 
-  const runBlazePoseAsyncOnJS = Worklets.createRunOnJS(runBlazePoseAsync);
+  const onPosePacketReady = useCallback(
+    (packet: PosePacket) => {
+      if (!isRunningRef.current) {
+        return;
+      }
 
-  const frameProcessor = useFrameProcessor(
-    (frame: Frame) => {
-      'worklet';
-      if (!state.isRunning) return;
+      if (!isMediaPipeFrameUsable(packet.imageLandmarks)) {
+        return;
+      }
 
-      runAtTargetFps(15, () => {
-        'worklet';
-        if (poseInFlight.value) return;
-        poseInFlight.value = true;
-        runBlazePoseAsyncOnJS(frame);
-      });
+      const smoothedModelLandmarks = smoothLandmarks(
+        smoothedModelLandmarksRef.current,
+        packet.worldLandmarks
+      );
+
+      const smoothedOverlayLandmarks = smoothLandmarks(
+        smoothedOverlayLandmarksRef.current,
+        packet.imageLandmarks
+      );
+
+      smoothedModelLandmarksRef.current = smoothedModelLandmarks;
+      smoothedOverlayLandmarksRef.current = smoothedOverlayLandmarks;
+
+      const featureVector = normalisePose(smoothedModelLandmarks);
+
+      const motionScore = computeFeatureMotion(
+        previousFeatureVectorRef.current,
+        featureVector
+      );
+
+      previousFeatureVectorRef.current = featureVector;
+
+      motionScoresRef.current.push(motionScore);
+
+      if (motionScoresRef.current.length > WINDOW_SIZE) {
+        motionScoresRef.current.shift();
+      }
+
+      lastWindowMotionRef.current = average(motionScoresRef.current);
+
+      bufferRef.current.push(featureVector);
+
+      const frameIndex = ++frameIndexRef.current;
+      const now = Date.now();
+
+      const { width, height } = Dimensions.get('window');
+      const frameSize = {
+        width,
+        height,
+      };
+
+      if (now - lastLandmarkUiUpdateRef.current >= LANDMARK_UI_UPDATE_MS) {
+        lastLandmarkUiUpdateRef.current = now;
+
+        setState((currentState) => ({
+          ...currentState,
+          landmarks: smoothedOverlayLandmarks,
+          frameSize,
+        }));
+      }
+
+      fpsTimestampsRef.current.push(now);
+      fpsTimestampsRef.current = fpsTimestampsRef.current.filter(
+        (timestamp) => now - timestamp < 1000
+      );
+
+      if (frameIndex % 15 === 0) {
+        updateFps(fpsTimestampsRef.current.length);
+      }
+
+      if (
+        frameIndex % STRIDE === 0 &&
+        bufferRef.current.size >= WINDOW_SIZE &&
+        !inferenceInFlightRef.current
+      ) {
+        inferenceInFlightRef.current = true;
+
+        const windowTensor = bufferRef.current.getWindow();
+        const windowStart = windowStartRef.current;
+
+        windowStartRef.current = frameIndex;
+
+        console.log(
+          `STGCN gate: windowMotion=${lastWindowMotionRef.current.toFixed(4)}`
+        );
+
+        runStgcn(windowTensor, windowStart);
+      }
     },
-    [state.isRunning, runBlazePoseAsyncOnJS],
+    [runStgcn, updateFps]
+  );
+
+  const callbacks = useMemo(
+    () => ({
+      onResults: (result: any) => {
+        const posePacket = extractMediaPipePosePacket(result);
+
+        if (posePacket) {
+          onPosePacketReady(posePacket);
+        }
+      },
+
+      onError: (error: any) => {
+        console.log('MediaPipe capture error:', error);
+        reportError(`MediaPipe error: ${String(error?.message ?? error)}`);
+      },
+    }),
+    [onPosePacketReady, reportError]
+  );
+
+  const mediaPipeSolution = usePoseDetection(
+    callbacks,
+    RunningMode.LIVE_STREAM,
+    MODEL_NAME,
+    {
+      numPoses: 1,
+      delegate: Delegate.CPU,
+      minPoseDetectionConfidence: 0.3,
+      minPosePresenceConfidence: 0.3,
+      minTrackingConfidence: 0.3,
+      shouldOutputSegmentationMasks: false,
+    }
   );
 
   const startCapture = useCallback(() => {
     bufferRef.current.reset();
     repCounterRef.current.reset();
+
     frameIndexRef.current = 0;
     windowStartRef.current = 0;
     fpsTimestampsRef.current = [];
     inferenceInFlightRef.current = false;
-    smoothedLandmarksRef.current = null;
+
+    smoothedModelLandmarksRef.current = null;
+    smoothedOverlayLandmarksRef.current = null;
+
+    previousFeatureVectorRef.current = null;
+    motionScoresRef.current = [];
+    lastWindowMotionRef.current = 0;
+
     lastLandmarkUiUpdateRef.current = 0;
-    poseInFlight.value = false;
-    setState(s => ({
-      ...s,
+    isRunningRef.current = true;
+
+    stableClassRef.current = null;
+    stableClassCountRef.current = 0;
+
+    setState((currentState) => ({
+      ...currentState,
       isRunning: true,
       repCount: 0,
       error: null,
       fps: 0,
       landmarks: null,
       frameSize: null,
+      exerciseClass: null,
+      classConfidence: 0,
     }));
   }, []);
 
   const stopCapture = useCallback(() => {
-    setState(s => ({ ...s, isRunning: false }));
+    isRunningRef.current = false;
+
+    setState((currentState) => ({
+      ...currentState,
+      isRunning: false,
+    }));
   }, []);
 
   const resetReps = useCallback(() => {
     repCounterRef.current.reset();
+
     frameIndexRef.current = 0;
     windowStartRef.current = 0;
     bufferRef.current.reset();
-    smoothedLandmarksRef.current = null;
-    setState(s => ({ ...s, repCount: 0, landmarks: null, frameSize: null }));
+
+    smoothedModelLandmarksRef.current = null;
+    smoothedOverlayLandmarksRef.current = null;
+
+    previousFeatureVectorRef.current = null;
+    motionScoresRef.current = [];
+    lastWindowMotionRef.current = 0;
+
+    stableClassRef.current = null;
+    stableClassCountRef.current = 0;
+
+    setState((currentState) => ({
+      ...currentState,
+      repCount: 0,
+      landmarks: null,
+      frameSize: null,
+      exerciseClass: null,
+      classConfidence: 0,
+    }));
   }, []);
 
   return {
     state,
-    frameProcessor,
+    mediaPipeSolution,
     startCapture,
     stopCapture,
     resetReps,
