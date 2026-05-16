@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   Alert,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -193,6 +194,158 @@ function availableMetrics(isBodyweight: boolean): Array<{ key: FocusMetric; labe
   ];
 }
 
+function formatHistoryNumber(value?: number) {
+  if (!value) return '0';
+  return value >= 1000 ? value.toLocaleString() : String(Math.round(value));
+}
+
+function ExerciseImagePreview({ exercise, theme, large = false }: { exercise: ExercisePickerItem; theme: ThemePalette; large?: boolean }) {
+  if (exercise.thumbnailUrl) {
+    return (
+      <Image
+        source={{ uri: exercise.thumbnailUrl }}
+        style={large ? styles.detailImage : styles.exerciseThumb}
+        resizeMode="cover"
+      />
+    );
+  }
+
+  return (
+    <View
+      style={[
+        large ? styles.detailImage : styles.exerciseThumb,
+        styles.exerciseThumbFallback,
+        { backgroundColor: theme.surfaceTertiary },
+      ]}
+    >
+      <Ionicons name={exercise.isBodyweight ? 'body-outline' : 'barbell'} size={large ? 42 : 20} color={theme.accent} />
+    </View>
+  );
+}
+
+function ExerciseDetailModal({
+  exercise,
+  theme,
+  onClose,
+  onSelect,
+}: {
+  exercise: ExercisePickerItem | null;
+  theme: ThemePalette;
+  onClose: () => void;
+  onSelect: (exercise: ExercisePickerItem) => void;
+}) {
+  if (!exercise) return null;
+
+  const history = exercise.history || { totalSets: 0, totalReps: 0, bestWeightKg: 0, totalVolumeKg: 0 };
+  const muscles = [exercise.primaryMuscle, ...(exercise.secondaryMuscles || [])].filter(Boolean);
+  const hasHistory = history.totalSets > 0;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={[styles.exerciseDetailCard, { backgroundColor: theme.surface }]}> 
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Exercise Preview</Text>
+            <TouchableOpacity style={[styles.modalClose, { backgroundColor: theme.surfaceSecondary }]} onPress={onClose}>
+              <Ionicons name="close" size={20} color={theme.text} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <ExerciseImagePreview exercise={exercise} theme={theme} large />
+
+            <Text style={[styles.detailName, { color: theme.text }]}>{exercise.name}</Text>
+            <Text style={[styles.detailMeta, { color: theme.textMuted }]}>
+              {[exercise.primaryMuscle, exercise.equipmentType || exercise.equipment, exercise.movementPattern]
+                .filter(Boolean)
+                .join(' • ') || 'Exercise'}
+            </Text>
+
+            <View style={styles.detailChipRow}>
+              {exercise.isAiTracked && (
+                <View style={[styles.detailChip, { backgroundColor: actionButtonColors(theme).backgroundColor }]}> 
+                  <Ionicons name="camera" size={13} color={actionButtonColors(theme).color} />
+                  <Text style={[styles.detailChipText, { color: actionButtonColors(theme).color }]}>AI-tracked</Text>
+                </View>
+              )}
+
+              <View style={[styles.detailChip, { backgroundColor: theme.surfaceSecondary }]}> 
+                <Text style={[styles.detailChipText, { color: theme.text }]}>
+                  {exercise.isBodyweight ? 'Bodyweight' : 'Weighted'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.detailSection}> 
+              <Text style={[styles.detailSectionTitle, { color: theme.text }]}>Description</Text>
+              <Text style={[styles.detailBodyText, { color: theme.textSecondary }]}> 
+                {exercise.notes || 'No exercise description has been provided by the API yet.'}
+              </Text>
+            </View>
+
+            <View style={styles.detailSection}> 
+              <Text style={[styles.detailSectionTitle, { color: theme.text }]}>Muscles and Equipment</Text>
+              <Text style={[styles.detailBodyText, { color: theme.textSecondary }]}> 
+                Muscles: {muscles.length ? muscles.join(', ') : 'Not specified'}
+              </Text>
+              <Text style={[styles.detailBodyText, { color: theme.textSecondary }]}> 
+                Equipment: {exercise.equipmentType || exercise.equipment || 'Not specified'}
+              </Text>
+              {!!exercise.aiExerciseClass && (
+                <Text style={[styles.detailBodyText, { color: theme.textSecondary }]}> 
+                  AI class: {exercise.aiExerciseClass}
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.detailSection}> 
+              <Text style={[styles.detailSectionTitle, { color: theme.text }]}>Local History</Text>
+              <View style={styles.historyGrid}>
+                <View style={[styles.historyCard, { backgroundColor: theme.surfaceSecondary }]}> 
+                  <Text style={[styles.historyValue, { color: theme.accent }]}>{formatHistoryNumber(history.totalSets)}</Text>
+                  <Text style={[styles.historyLabel, { color: theme.textMuted }]}>Sets</Text>
+                </View>
+                <View style={[styles.historyCard, { backgroundColor: theme.surfaceSecondary }]}> 
+                  <Text style={[styles.historyValue, { color: theme.accent }]}>{formatHistoryNumber(history.totalReps)}</Text>
+                  <Text style={[styles.historyLabel, { color: theme.textMuted }]}>Reps</Text>
+                </View>
+                <View style={[styles.historyCard, { backgroundColor: theme.surfaceSecondary }]}> 
+                  <Text style={[styles.historyValue, { color: theme.accent }]}>{formatHistoryNumber(history.bestWeightKg)}</Text>
+                  <Text style={[styles.historyLabel, { color: theme.textMuted }]}>Best kg</Text>
+                </View>
+              </View>
+
+              <View style={[styles.chartShell, { backgroundColor: theme.surfaceSecondary }]}> 
+                {[0.45, 0.72, 0.56, 0.82, hasHistory ? 0.95 : 0.35].map((heightRatio, index) => (
+                  <View key={index} style={styles.chartBarWrap}> 
+                    <View
+                      style={[
+                        styles.chartBar,
+                        {
+                          height: `${heightRatio * 100}%`,
+                          backgroundColor: theme.accent,
+                          opacity: hasHistory ? 1 : 0.28,
+                        },
+                      ]}
+                    />
+                  </View>
+                ))}
+              </View>
+              <Text style={[styles.detailHint, { color: theme.textMuted }]}> 
+                {hasHistory ? 'Based on local completed workout sets.' : 'Charts will become meaningful after completed workout history exists.'}
+              </Text>
+            </View>
+          </ScrollView>
+
+          <TouchableOpacity style={[styles.detailAddButton, { backgroundColor: theme.accent }]} onPress={() => onSelect(exercise)}>
+            <Text style={styles.detailAddText}>Add Exercise</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function ExercisePickerModal({
   visible,
   exercises,
@@ -209,6 +362,7 @@ function ExercisePickerModal({
   onSelect: (exercise: ExercisePickerItem) => void;
 }) {
   const [query, setQuery] = useState('');
+  const [previewExercise, setPreviewExercise] = useState<ExercisePickerItem | null>(null);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -253,13 +407,18 @@ function ExercisePickerModal({
                 key={exercise.id}
                 style={[styles.exercisePickerItem, { backgroundColor: theme.surfaceSecondary }]}
                 onPress={() => onSelect(exercise)}
+                onLongPress={() => setPreviewExercise(exercise)}
+                delayLongPress={350}
+                activeOpacity={0.86}
               >
+                <ExerciseImagePreview exercise={exercise} theme={theme} />
+
                 <View style={styles.exercisePickerTextWrap}>
-                  <Text style={[styles.exercisePickerName, { color: theme.text }]} numberOfLines={1}>
+                  <Text style={[styles.exercisePickerName, { color: theme.text }]} numberOfLines={2}>
                     {exercise.name}
                   </Text>
-                  <Text style={[styles.exercisePickerMeta, { color: theme.textMuted }]} numberOfLines={1}>
-                    {[exercise.primaryMuscle, exercise.equipment, exercise.isAiTracked ? 'AI-tracked' : 'Manual']
+                  <Text style={[styles.exercisePickerMeta, { color: theme.textMuted }]} numberOfLines={2}>
+                    {[exercise.primaryMuscle, exercise.equipmentType || exercise.equipment, exercise.isAiTracked ? 'AI-tracked' : 'Manual']
                       .filter(Boolean)
                       .join(' • ')}
                   </Text>
@@ -275,6 +434,18 @@ function ExercisePickerModal({
               </TouchableOpacity>
             ))}
           </ScrollView>
+
+          <Text style={[styles.longPressHint, { color: theme.textMuted }]}>Long press an exercise to preview details.</Text>
+
+          <ExerciseDetailModal
+            exercise={previewExercise}
+            theme={theme}
+            onClose={() => setPreviewExercise(null)}
+            onSelect={exercise => {
+              setPreviewExercise(null);
+              onSelect(exercise);
+            }}
+          />
         </Pressable>
       </Pressable>
     </Modal>
@@ -718,18 +889,31 @@ export default function ActiveWorkoutSessionScreen() {
 
   const load = async () => {
     try {
-      await pullExercises();
+      const activeSession = await getOrCreateActiveWorkoutSession();
+      setSession(activeSession);
     } catch (error) {
-      console.log('Exercise sync skipped', error);
+      console.log('Local workout session load error', error);
     }
 
-    const [activeSession, exercises] = await Promise.all([
-      getOrCreateActiveWorkoutSession(),
-      listAvailableExercises(),
-    ]);
+    try {
+      const exercises = await listAvailableExercises();
+      setAvailableExercises(exercises);
+    } catch (error) {
+      console.log('Local exercise list load error', error);
+    }
 
-    setSession(activeSession);
-    setAvailableExercises(exercises);
+    pullExercises()
+      .then(async () => {
+        const [syncedSession, syncedExercises] = await Promise.all([
+          getOrCreateActiveWorkoutSession(),
+          listAvailableExercises(),
+        ]);
+        setSession(syncedSession);
+        setAvailableExercises(syncedExercises);
+      })
+      .catch(error => {
+        console.log('Exercise sync skipped', error);
+      });
   };
 
   useEffect(() => {
@@ -1198,6 +1382,131 @@ const styles = StyleSheet.create({
     marginRight: 8,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  exerciseThumb: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    marginRight: 10,
+  },
+  exerciseThumbFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  longPressHint: {
+    marginTop: 8,
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  exerciseDetailCard: {
+    maxHeight: '88%',
+    borderRadius: 24,
+    padding: 18,
+  },
+  detailImage: {
+    width: '100%',
+    height: 170,
+    borderRadius: 20,
+    marginBottom: 14,
+  },
+  detailName: {
+    fontSize: 23,
+    fontWeight: '900',
+  },
+  detailMeta: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  detailChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 12,
+  },
+  detailChip: {
+    minHeight: 28,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    marginRight: 8,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  detailChipText: {
+    fontSize: 12,
+    fontWeight: '900',
+    marginLeft: 5,
+  },
+  detailSection: {
+    marginTop: 16,
+  },
+  detailSectionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 6,
+  },
+  detailBodyText: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  historyGrid: {
+    flexDirection: 'row',
+    marginHorizontal: -4,
+  },
+  historyCard: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    marginHorizontal: 4,
+  },
+  historyValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  historyLabel: {
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  chartShell: {
+    height: 88,
+    borderRadius: 16,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  chartBarWrap: {
+    flex: 1,
+    height: '100%',
+    justifyContent: 'flex-end',
+    marginHorizontal: 4,
+  },
+  chartBar: {
+    width: '100%',
+    borderRadius: 999,
+  },
+  detailHint: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  detailAddButton: {
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  detailAddText: {
+    color: '#000000',
+    fontSize: 16,
+    fontWeight: '900',
   },
   metricOption: {
     minHeight: 66,

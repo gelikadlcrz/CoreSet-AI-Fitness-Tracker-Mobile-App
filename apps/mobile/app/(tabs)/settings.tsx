@@ -573,24 +573,25 @@ export default function SettingsScreen() {
   };
 
   const pickProfilePhoto = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert('Permission needed', 'Please allow photo library access to update your profile picture.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.75,
-    });
-
-    if (!result.canceled && result.assets[0]?.uri) {
-      updateDraft(next => {
-        next.profile.photoUri = result.assets[0].uri;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.75,
+        exif: false,
       });
+
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        updateDraft(next => {
+          next.profile.photoUri = result.assets[0].uri;
+        });
+      }
+    } catch (error) {
+      console.log('Profile photo picker error', error);
+      Alert.alert(
+        'Photo picker unavailable',
+        'CoreSet could not open the photo picker. Please close and reopen the app, then try again.',
+      );
     }
   };
 

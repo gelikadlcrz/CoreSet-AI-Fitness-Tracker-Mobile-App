@@ -42,11 +42,28 @@ export type WorkoutSessionVM = {
   exercises: WorkoutExerciseVM[];
 };
 
+export type ExerciseHistorySummary = {
+  totalSets: number;
+  totalReps: number;
+  bestWeightKg: number;
+  totalVolumeKg: number;
+};
+
 export type ExercisePickerItem = {
   id: string;
   name: string;
   equipment?: string;
   primaryMuscle?: string;
+  muscleGroup?: string;
+  secondaryMuscles?: string[];
+  equipmentType?: string;
+  movementPattern?: string;
+  notes?: string;
   isAiTracked?: boolean;
   isBodyweight?: boolean;
+  isCustom?: boolean;
+  thumbnailUrl?: string;
+  demoVideoUrl?: string;
+  aiExerciseClass?: string;
+  history?: ExerciseHistorySummary;
 };
