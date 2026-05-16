@@ -11,10 +11,10 @@ import { WINDOW_SIZE, FEATURE_DIM } from '../utils/temporalBuffer';
 import { NUM_JOINTS } from '../../../ml/graph/adjacencyMatrix';
 
 export const CLASS_LABELS = [
-  'squat',
-  'push_up',
   'bench_press',
   'pull_up',
+  'push_up',
+  'squat',
 ] as const;
 
 export type ExerciseClass = typeof CLASS_LABELS[number];
