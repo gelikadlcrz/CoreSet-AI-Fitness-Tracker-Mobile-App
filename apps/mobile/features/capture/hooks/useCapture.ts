@@ -23,7 +23,16 @@ const STRIDE = Math.floor(WINDOW_SIZE / 2);
 const LANDMARK_UI_UPDATE_MS = 80;
 const LANDMARK_SMOOTHING_ALPHA = 0.35;
 
+const MIN_CLASS_CONFIDENCE_FOR_REPS = 0.7;
+const MIN_STABLE_CLASS_WINDOWS = 3;
+const MIN_WINDOW_MOTION_FOR_REPS = 0.018;
+
 type RawLandmarks = Landmark3D[];
+
+type PosePacket = {
+  imageLandmarks: RawLandmarks;
+  worldLandmarks: RawLandmarks;
+};
 
 export interface CaptureState {
   isReady: boolean;
@@ -58,8 +67,17 @@ function isLandmarkArray(value: any): value is RawLandmarks {
   );
 }
 
-function extractMediaPipeLandmarks(result: any): RawLandmarks {
-  const candidates = [
+function toRawLandmarks(value: any): RawLandmarks {
+  return value.map((point: any) => ({
+    x: point.x,
+    y: point.y,
+    z: point.z ?? 0,
+    visibility: point.visibility ?? point.presence ?? 1,
+  }));
+}
+
+function extractMediaPipePosePacket(result: any): PosePacket | null {
+  const imageCandidates = [
     result?.results?.[0]?.landmarks?.[0],
     result?.results?.[0]?.poseLandmarks?.[0],
     result?.landmarks?.[0],
@@ -68,18 +86,37 @@ function extractMediaPipeLandmarks(result: any): RawLandmarks {
     result?.poseLandmarks,
   ];
 
-  for (const item of candidates) {
+  const worldCandidates = [
+    result?.results?.[0]?.worldLandmarks?.[0],
+    result?.worldLandmarks?.[0],
+    result?.worldLandmarks,
+  ];
+
+  let imageLandmarks: RawLandmarks | null = null;
+  let worldLandmarks: RawLandmarks | null = null;
+
+  for (const item of imageCandidates) {
     if (isLandmarkArray(item)) {
-      return item.map((point) => ({
-        x: point.x,
-        y: point.y,
-        z: point.z ?? 0,
-        visibility: point.visibility ?? point.presence ?? 1,
-      }));
+      imageLandmarks = toRawLandmarks(item);
+      break;
     }
   }
 
-  return [];
+  for (const item of worldCandidates) {
+    if (isLandmarkArray(item)) {
+      worldLandmarks = toRawLandmarks(item);
+      break;
+    }
+  }
+
+  if (!imageLandmarks || !worldLandmarks) {
+    return null;
+  }
+
+  return {
+    imageLandmarks,
+    worldLandmarks,
+  };
 }
 
 function isMediaPipeFrameUsable(landmarks: RawLandmarks): boolean {
@@ -94,14 +131,14 @@ function isMediaPipeFrameUsable(landmarks: RawLandmarks): boolean {
   }).length;
 
   const requiredJoints = [
-    11, // left shoulder
-    12, // right shoulder
-    13, // left elbow
-    14, // right elbow
-    15, // left wrist
-    16, // right wrist
-    23, // left hip
-    24, // right hip
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    23,
+    24,
   ];
 
   const requiredVisible = requiredJoints.every((index) => {
@@ -119,41 +156,79 @@ function isMediaPipeFrameUsable(landmarks: RawLandmarks): boolean {
 }
 
 function smoothLandmarks(
-  prev: RawLandmarks | null,
+  previous: RawLandmarks | null,
   current: RawLandmarks
 ): RawLandmarks {
-  if (!prev || prev.length !== current.length) {
+  if (!previous || previous.length !== current.length) {
     return current;
   }
 
-  return current.map((lm, idx) => {
-    const prevLm = prev[idx];
+  return current.map((landmark, index) => {
+    const previousLandmark = previous[index];
 
     if (
-      !Number.isFinite(lm.x) ||
-      !Number.isFinite(lm.y) ||
-      !Number.isFinite(lm.z)
+      !Number.isFinite(landmark.x) ||
+      !Number.isFinite(landmark.y) ||
+      !Number.isFinite(landmark.z)
     ) {
-      return prevLm;
+      return previousLandmark;
     }
 
     if (
-      !Number.isFinite(prevLm.x) ||
-      !Number.isFinite(prevLm.y) ||
-      !Number.isFinite(prevLm.z)
+      !Number.isFinite(previousLandmark.x) ||
+      !Number.isFinite(previousLandmark.y) ||
+      !Number.isFinite(previousLandmark.z)
     ) {
-      return lm;
+      return landmark;
     }
 
     return {
-      x: prevLm.x + (lm.x - prevLm.x) * LANDMARK_SMOOTHING_ALPHA,
-      y: prevLm.y + (lm.y - prevLm.y) * LANDMARK_SMOOTHING_ALPHA,
-      z: prevLm.z + (lm.z - prevLm.z) * LANDMARK_SMOOTHING_ALPHA,
+      x:
+        previousLandmark.x +
+        (landmark.x - previousLandmark.x) * LANDMARK_SMOOTHING_ALPHA,
+      y:
+        previousLandmark.y +
+        (landmark.y - previousLandmark.y) * LANDMARK_SMOOTHING_ALPHA,
+      z:
+        previousLandmark.z +
+        (landmark.z - previousLandmark.z) * LANDMARK_SMOOTHING_ALPHA,
       visibility:
-        (prevLm.visibility ?? 0) * (1 - LANDMARK_SMOOTHING_ALPHA) +
-        (lm.visibility ?? 0) * LANDMARK_SMOOTHING_ALPHA,
+        (previousLandmark.visibility ?? 0) * (1 - LANDMARK_SMOOTHING_ALPHA) +
+        (landmark.visibility ?? 0) * LANDMARK_SMOOTHING_ALPHA,
     };
   });
+}
+
+function computeFeatureMotion(
+  previous: Float32Array | null,
+  current: Float32Array
+): number {
+  if (!previous || previous.length !== current.length) {
+    return 0;
+  }
+
+  let total = 0;
+  let count = 0;
+
+  for (let index = 0; index < current.length; index++) {
+    const prevValue = previous[index];
+    const currentValue = current[index];
+
+    if (Number.isFinite(prevValue) && Number.isFinite(currentValue)) {
+      total += Math.abs(currentValue - prevValue);
+      count++;
+    }
+  }
+
+  return count > 0 ? total / count : 0;
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 export function useCapture() {
@@ -167,9 +242,19 @@ export function useCapture() {
   const windowStartRef = useRef(0);
   const fpsTimestampsRef = useRef<number[]>([]);
   const inferenceInFlightRef = useRef(false);
-  const smoothedLandmarksRef = useRef<RawLandmarks | null>(null);
+
+  const smoothedModelLandmarksRef = useRef<RawLandmarks | null>(null);
+  const smoothedOverlayLandmarksRef = useRef<RawLandmarks | null>(null);
+
+  const previousFeatureVectorRef = useRef<Float32Array | null>(null);
+  const motionScoresRef = useRef<number[]>([]);
+
   const lastLandmarkUiUpdateRef = useRef(0);
   const isRunningRef = useRef(false);
+
+  const stableClassRef = useRef<ExerciseClass | null>(null);
+  const stableClassCountRef = useRef(0);
+  const lastWindowMotionRef = useRef(0);
 
   useEffect(() => {
     isRunningRef.current = state.isRunning;
@@ -182,38 +267,38 @@ export function useCapture() {
       .load()
       .then(() => {
         if (!cancelled) {
-          setState((s) => ({
-            ...s,
+          setState((currentState) => ({
+            ...currentState,
             isReady: true,
           }));
         }
       })
-      .catch((err) => {
+      .catch((error) => {
         if (!cancelled) {
-          setState((s) => ({
-            ...s,
-            error: `Model load failed: ${err?.message ?? err}`,
+          setState((currentState) => ({
+            ...currentState,
+            error: `Model load failed: ${error?.message ?? error}`,
           }));
         }
       });
 
-    const unsubRep = repCounterRef.current.onRep((event: RepEvent) => {
-      setState((s) => ({
-        ...s,
+    const unsubscribeRep = repCounterRef.current.onRep((event: RepEvent) => {
+      setState((currentState) => ({
+        ...currentState,
         repCount: event.repNumber,
       }));
     });
 
     return () => {
       cancelled = true;
-      unsubRep();
+      unsubscribeRep();
     };
   }, []);
 
   const updateClassification = useCallback(
     (exerciseClass: ExerciseClass, confidence: number) => {
-      setState((s) => ({
-        ...s,
+      setState((currentState) => ({
+        ...currentState,
         exerciseClass,
         classConfidence: confidence,
       }));
@@ -222,16 +307,16 @@ export function useCapture() {
   );
 
   const updateFps = useCallback((fps: number) => {
-    setState((s) => ({
-      ...s,
+    setState((currentState) => ({
+      ...currentState,
       fps,
     }));
   }, []);
 
-  const reportError = useCallback((msg: string) => {
-    setState((s) => ({
-      ...s,
-      error: msg,
+  const reportError = useCallback((message: string) => {
+    setState((currentState) => ({
+      ...currentState,
+      error: message,
     }));
   }, []);
 
@@ -241,10 +326,35 @@ export function useCapture() {
         const result = await stgcnRunnerRef.current.run(windowTensor);
         const confidence = Math.max(...result.classProbs);
 
+        if (stableClassRef.current === result.exerciseClass) {
+          stableClassCountRef.current += 1;
+        } else {
+          stableClassRef.current = result.exerciseClass;
+          stableClassCountRef.current = 1;
+        }
+
         updateClassification(result.exerciseClass, confidence);
-        repCounterRef.current.processWindow(result.densityMap, windowStart);
-      } catch (e: any) {
-        reportError(e?.message ?? 'ST-GCN inference error');
+
+        const isStableClass =
+          stableClassCountRef.current >= MIN_STABLE_CLASS_WINDOWS;
+
+        const isConfident = confidence >= MIN_CLASS_CONFIDENCE_FOR_REPS;
+        const hasRealMotion =
+          lastWindowMotionRef.current >= MIN_WINDOW_MOTION_FOR_REPS;
+
+        if (isStableClass && isConfident && hasRealMotion) {
+          repCounterRef.current.processWindow(result.densityMap, windowStart);
+        } else {
+          console.log(
+            `Rep skipped: class=${
+              result.exerciseClass
+            }, confidence=${confidence.toFixed(2)}, stable=${
+              stableClassCountRef.current
+            }, motion=${lastWindowMotionRef.current.toFixed(4)}`
+          );
+        }
+      } catch (error: any) {
+        reportError(error?.message ?? 'ST-GCN inference error');
       } finally {
         inferenceInFlightRef.current = false;
       }
@@ -252,38 +362,63 @@ export function useCapture() {
     [updateClassification, reportError]
   );
 
-  const onLandmarksReady = useCallback(
-    (landmarks: RawLandmarks) => {
+  const onPosePacketReady = useCallback(
+    (packet: PosePacket) => {
       if (!isRunningRef.current) {
         return;
       }
 
-      if (!isMediaPipeFrameUsable(landmarks)) {
+      if (!isMediaPipeFrameUsable(packet.imageLandmarks)) {
         return;
       }
 
-      const smoothedLandmarks = smoothLandmarks(
-        smoothedLandmarksRef.current,
-        landmarks
+      const smoothedModelLandmarks = smoothLandmarks(
+        smoothedModelLandmarksRef.current,
+        packet.worldLandmarks
       );
 
-      smoothedLandmarksRef.current = smoothedLandmarks;
+      const smoothedOverlayLandmarks = smoothLandmarks(
+        smoothedOverlayLandmarksRef.current,
+        packet.imageLandmarks
+      );
 
-      const featureVec = normalisePose(smoothedLandmarks);
-      bufferRef.current.push(featureVec);
+      smoothedModelLandmarksRef.current = smoothedModelLandmarks;
+      smoothedOverlayLandmarksRef.current = smoothedOverlayLandmarks;
 
-      const frameIdx = ++frameIndexRef.current;
+      const featureVector = normalisePose(smoothedModelLandmarks);
+
+      const motionScore = computeFeatureMotion(
+        previousFeatureVectorRef.current,
+        featureVector
+      );
+
+      previousFeatureVectorRef.current = featureVector;
+
+      motionScoresRef.current.push(motionScore);
+
+      if (motionScoresRef.current.length > WINDOW_SIZE) {
+        motionScoresRef.current.shift();
+      }
+
+      lastWindowMotionRef.current = average(motionScoresRef.current);
+
+      bufferRef.current.push(featureVector);
+
+      const frameIndex = ++frameIndexRef.current;
       const now = Date.now();
 
       const { width, height } = Dimensions.get('window');
-      const frameSize = { width, height };
+      const frameSize = {
+        width,
+        height,
+      };
 
       if (now - lastLandmarkUiUpdateRef.current >= LANDMARK_UI_UPDATE_MS) {
         lastLandmarkUiUpdateRef.current = now;
 
-        setState((s) => ({
-          ...s,
-          landmarks: smoothedLandmarks,
+        setState((currentState) => ({
+          ...currentState,
+          landmarks: smoothedOverlayLandmarks,
           frameSize,
         }));
       }
@@ -293,12 +428,12 @@ export function useCapture() {
         (timestamp) => now - timestamp < 1000
       );
 
-      if (frameIdx % 15 === 0) {
+      if (frameIndex % 15 === 0) {
         updateFps(fpsTimestampsRef.current.length);
       }
 
       if (
-        frameIdx % STRIDE === 0 &&
+        frameIndex % STRIDE === 0 &&
         bufferRef.current.size >= WINDOW_SIZE &&
         !inferenceInFlightRef.current
       ) {
@@ -307,7 +442,11 @@ export function useCapture() {
         const windowTensor = bufferRef.current.getWindow();
         const windowStart = windowStartRef.current;
 
-        windowStartRef.current = frameIdx;
+        windowStartRef.current = frameIndex;
+
+        console.log(
+          `STGCN gate: windowMotion=${lastWindowMotionRef.current.toFixed(4)}`
+        );
 
         runStgcn(windowTensor, windowStart);
       }
@@ -318,10 +457,10 @@ export function useCapture() {
   const callbacks = useMemo(
     () => ({
       onResults: (result: any) => {
-        const landmarks = extractMediaPipeLandmarks(result);
+        const posePacket = extractMediaPipePosePacket(result);
 
-        if (landmarks.length === 33) {
-          onLandmarksReady(landmarks);
+        if (posePacket) {
+          onPosePacketReady(posePacket);
         }
       },
 
@@ -330,7 +469,7 @@ export function useCapture() {
         reportError(`MediaPipe error: ${String(error?.message ?? error)}`);
       },
     }),
-    [onLandmarksReady, reportError]
+    [onPosePacketReady, reportError]
   );
 
   const mediaPipeSolution = usePoseDetection(
@@ -355,26 +494,38 @@ export function useCapture() {
     windowStartRef.current = 0;
     fpsTimestampsRef.current = [];
     inferenceInFlightRef.current = false;
-    smoothedLandmarksRef.current = null;
+
+    smoothedModelLandmarksRef.current = null;
+    smoothedOverlayLandmarksRef.current = null;
+
+    previousFeatureVectorRef.current = null;
+    motionScoresRef.current = [];
+    lastWindowMotionRef.current = 0;
+
     lastLandmarkUiUpdateRef.current = 0;
     isRunningRef.current = true;
 
-    setState((s) => ({
-      ...s,
+    stableClassRef.current = null;
+    stableClassCountRef.current = 0;
+
+    setState((currentState) => ({
+      ...currentState,
       isRunning: true,
       repCount: 0,
       error: null,
       fps: 0,
       landmarks: null,
       frameSize: null,
+      exerciseClass: null,
+      classConfidence: 0,
     }));
   }, []);
 
   const stopCapture = useCallback(() => {
     isRunningRef.current = false;
 
-    setState((s) => ({
-      ...s,
+    setState((currentState) => ({
+      ...currentState,
       isRunning: false,
     }));
   }, []);
@@ -385,13 +536,24 @@ export function useCapture() {
     frameIndexRef.current = 0;
     windowStartRef.current = 0;
     bufferRef.current.reset();
-    smoothedLandmarksRef.current = null;
 
-    setState((s) => ({
-      ...s,
+    smoothedModelLandmarksRef.current = null;
+    smoothedOverlayLandmarksRef.current = null;
+
+    previousFeatureVectorRef.current = null;
+    motionScoresRef.current = [];
+    lastWindowMotionRef.current = 0;
+
+    stableClassRef.current = null;
+    stableClassCountRef.current = 0;
+
+    setState((currentState) => ({
+      ...currentState,
       repCount: 0,
       landmarks: null,
       frameSize: null,
+      exerciseClass: null,
+      classConfidence: 0,
     }));
   }, []);
 
