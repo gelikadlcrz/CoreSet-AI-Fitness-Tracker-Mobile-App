@@ -3,10 +3,13 @@ import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
 import type {
   ExercisePickerItem,
+  FocusMetric,
   WorkoutSessionVM,
 } from '../types/workoutSession.types';
 
 const now = () => Date.now();
+
+const AI_EXERCISE_NAMES = ['push up', 'push-up', 'squat', 'pull up', 'pull-up', 'bench press'];
 
 function secondsSince(timestamp: number) {
   return Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
@@ -14,6 +17,11 @@ function secondsSince(timestamp: number) {
 
 function isLiveRecordQuery() {
   return Q.or(Q.where('deleted_at', Q.eq(null)), Q.where('deleted_at', 0));
+}
+
+function isAiTrackedByName(name: string) {
+  const normalized = name.toLowerCase();
+  return AI_EXERCISE_NAMES.some(keyword => normalized.includes(keyword));
 }
 
 async function getCurrentRemoteUserId() {
@@ -36,6 +44,7 @@ async function ensureDemoExercise(data: {
   equipment: string;
   primaryMuscle?: string;
   isAiTracked?: boolean;
+  isBodyweight?: boolean;
 }) {
   const existing = await findExerciseByExternalId(data.exerciseId);
   if (existing) return existing;
@@ -51,9 +60,9 @@ async function ensureDemoExercise(data: {
     record.secondaryMusclesJson = '[]';
     record.equipmentType = data.equipment;
     record.movementPattern = '';
-    record.isAiTracked = !!data.isAiTracked;
-    record.aiExerciseClass = data.isAiTracked ? data.exerciseId.replace('demo-', '') : '';
-    record.isBodyweight = data.equipment === 'Bodyweight';
+    record.isAiTracked = !!data.isAiTracked || isAiTrackedByName(data.name);
+    record.aiExerciseClass = record.isAiTracked ? data.name.toLowerCase().replace(/\s+/g, '_') : '';
+    record.isBodyweight = !!data.isBodyweight || data.equipment === 'Bodyweight';
     record.isCustom = true;
     record.thumbnailUrl = '';
     record.demoVideoUrl = '';
@@ -79,6 +88,7 @@ async function seedDemoWorkout() {
     muscleGroup: 'Chest',
     equipment: 'Barbell',
     primaryMuscle: 'Chest',
+    isAiTracked: true,
   });
 
   const lateralRaise = await ensureDemoExercise({
@@ -110,9 +120,9 @@ async function seedDemoWorkout() {
   }) as any;
 
   const routineExerciseInputs = [
-    { exercise: bench, sortOrder: 1, sets: 2, reps: 8, weight: 65, rest: 180, note: 'Third notch on machine' },
-    { exercise: lateralRaise, sortOrder: 2, sets: 1, reps: 12, weight: 10, rest: 90, note: '' },
-    { exercise: squat, sortOrder: 3, sets: 4, reps: 10, weight: 70, rest: 180, note: '' },
+    { exercise: bench, sortOrder: 1, sets: 2, reps: 8, weight: 65, rest: 180, note: 'Third notch on machine', focus: 'previous' as FocusMetric },
+    { exercise: lateralRaise, sortOrder: 2, sets: 1, reps: 12, weight: 10, rest: 90, note: '', focus: 'previous' as FocusMetric },
+    { exercise: squat, sortOrder: 3, sets: 4, reps: 10, weight: 70, rest: 180, note: '', focus: 'previous' as FocusMetric },
   ];
 
   const routineExerciseRecords: any[] = [];
@@ -131,6 +141,7 @@ async function seedDemoWorkout() {
       record.defaultWeightKg = item.weight;
       record.defaultRestSeconds = item.rest;
       record.note = item.note;
+      record.focusMetric = item.focus;
       record.deletedAt = 0;
       record.createdAt = timestamp;
       record.updatedAt = timestamp;
@@ -156,8 +167,8 @@ async function seedDemoWorkout() {
   }) as any;
 
   const setInputs = [
-    { re: routineExerciseRecords[0], order: 1, type: 'normal', prevW: 65, prevR: 4, w: 65, r: 5, rpe: 7, rest: 180, done: true },
-    { re: routineExerciseRecords[0], order: 2, type: 'failure', prevW: 65, prevR: 3, w: 70, r: 10, rpe: 8, rest: 180, done: false },
+    { re: routineExerciseRecords[0], order: 1, type: 'normal', prevW: 65, prevR: 4, w: 65, r: 5, rpe: 7, rest: 180, done: false },
+    { re: routineExerciseRecords[0], order: 2, type: 'failure', prevW: 65, prevR: 3, w: 70, r: 10, rpe: 8, rest: 180, done: true },
     { re: routineExerciseRecords[1], order: 1, type: 'normal', prevW: 0, prevR: 0, w: 0, r: 0, rpe: 0, rest: 90, done: false },
     { re: routineExerciseRecords[2], order: 1, type: 'warmup', prevW: 30, prevR: 5, w: 70, r: 10, rpe: 8, rest: 180, done: false },
     { re: routineExerciseRecords[2], order: 2, type: 'normal', prevW: 65, prevR: 4, w: 70, r: 10, rpe: 8, rest: 180, done: false },
@@ -223,17 +234,24 @@ async function buildSessionViewModel(session: any): Promise<WorkoutSessionVM> {
       )
       .fetch();
 
+    const isBodyweight = !!exercise.isBodyweight;
+    const isAiTracked = !!exercise.isAiTracked || isAiTrackedByName(exercise.name);
+
     exerciseCards.push({
       id: routineExercise.id,
       exerciseId: exercise.id,
       routineExerciseId: routineExercise.id,
+      baseName: exercise.name,
       name: `${exercise.name}${exercise.equipment ? ` (${exercise.equipment})` : ''}`,
       equipment: exercise.equipment,
       note: routineExercise.note || '',
+      focusMetric: routineExercise.focusMetric || 'previous',
+      isAiTracked,
+      isBodyweight,
       sets: (sets as any[]).map(set => ({
         id: set.id,
         order: set.setOrder,
-        type: set.setType,
+        type: set.setType || (set.isWarmup ? 'warmup' : 'normal'),
         previousWeightKg: set.previousWeightKg,
         previousReps: set.previousReps,
         weightKg: set.weightKg,
@@ -285,7 +303,8 @@ export async function listAvailableExercises(): Promise<ExercisePickerItem[]> {
     name: exercise.name,
     equipment: exercise.equipment || exercise.equipmentType || '',
     primaryMuscle: exercise.primaryMuscle || exercise.muscleGroup || '',
-    isAiTracked: !!exercise.isAiTracked,
+    isAiTracked: !!exercise.isAiTracked || isAiTrackedByName(exercise.name),
+    isBodyweight: !!exercise.isBodyweight,
   }));
 }
 
@@ -301,7 +320,11 @@ export async function toggleSetCompleted(setId: string) {
   });
 }
 
-export async function addSetToRoutineExercise(sessionId: string, routineExerciseId: string) {
+export async function addSetToRoutineExercise(
+  sessionId: string,
+  routineExerciseId: string,
+  setType: 'normal' | 'warmup' | 'failure' | 'drop' = 'normal',
+) {
   await database.write(async () => {
     const timestamp = now();
     const routineExercise = await database.collections
@@ -316,21 +339,28 @@ export async function addSetToRoutineExercise(sessionId: string, routineExercise
       )
       .fetch();
 
+    const order = existing.length + 1;
+    const isWarmup = setType === 'warmup';
+
     await setsCollection.create((record: any) => {
       record.remoteSetId = '';
       record.sessionId = sessionId;
       record.exerciseId = routineExercise.exerciseId;
       record.routineExerciseId = routineExerciseId;
-      record.setOrder = existing.length + 1;
-      record.setType = 'normal';
-      record.setNumber = existing.length + 1;
-      record.isWarmup = false;
+      record.setOrder = order;
+      record.setType = setType;
+      record.setNumber = order;
+      record.isWarmup = isWarmup;
       record.logMode = 'manual';
       record.previousWeightKg = 0;
       record.previousReps = 0;
-      record.weightKg = routineExercise.defaultWeightKg || 0;
-      record.reps = routineExercise.targetReps || 0;
-      record.rpe = routineExercise.targetRpe || 0;
+      record.weightKg = isWarmup
+        ? Math.round((routineExercise.defaultWeightKg || 0) * 0.5)
+        : routineExercise.defaultWeightKg || 0;
+      record.reps = isWarmup
+        ? Math.max(5, Math.floor((routineExercise.targetReps || 10) * 0.5))
+        : routineExercise.targetReps || 0;
+      record.rpe = isWarmup ? 0 : routineExercise.targetRpe || 0;
       record.restSeconds = routineExercise.defaultRestSeconds || 90;
       record.completed = false;
       record.modelConfidenceAvg = 0;
@@ -352,19 +382,24 @@ export async function addExerciseToActiveSession(sessionId: string, routineId: s
       .query(Q.where('routine_id', routineId), isLiveRecordQuery())
       .fetch();
 
+    const exercise = await database.collections.get('exercises').find(exerciseId) as any;
+    const defaultWeight = exercise.isBodyweight ? 0 : 20;
+    const defaultReps = exercise.isBodyweight ? 12 : 10;
+
     const routineExercise = await routineExercises.create((record: any) => {
       record.remoteRoutineExerciseId = '';
       record.routineId = routineId;
       record.exerciseId = exerciseId;
       record.sortOrder = existingRoutineExercises.length + 1;
       record.targetSets = 3;
-      record.targetReps = 10;
-      record.targetRepsMin = 8;
-      record.targetRepsMax = 12;
-      record.targetRpe = 8;
-      record.defaultWeightKg = 0;
+      record.targetReps = defaultReps;
+      record.targetRepsMin = Math.max(1, defaultReps - 2);
+      record.targetRepsMax = defaultReps + 2;
+      record.targetRpe = exercise.isBodyweight ? 0 : 8;
+      record.defaultWeightKg = defaultWeight;
       record.defaultRestSeconds = 90;
       record.note = '';
+      record.focusMetric = exercise.isBodyweight ? 'total_reps' : 'previous';
       record.deletedAt = 0;
       record.createdAt = timestamp;
       record.updatedAt = timestamp;
@@ -383,9 +418,9 @@ export async function addExerciseToActiveSession(sessionId: string, routineId: s
         record.logMode = 'manual';
         record.previousWeightKg = 0;
         record.previousReps = 0;
-        record.weightKg = 0;
-        record.reps = 0;
-        record.rpe = 0;
+        record.weightKg = defaultWeight;
+        record.reps = defaultReps;
+        record.rpe = exercise.isBodyweight ? 0 : 8;
         record.restSeconds = 90;
         record.completed = false;
         record.modelConfidenceAvg = 0;
@@ -393,6 +428,45 @@ export async function addExerciseToActiveSession(sessionId: string, routineId: s
         record.notes = '';
         record.deletedAt = 0;
         record.createdAt = timestamp;
+        record.updatedAt = timestamp;
+      });
+    }
+  });
+}
+
+export async function replaceExerciseInActiveWorkout(
+  sessionId: string,
+  routineExerciseId: string,
+  newExerciseId: string,
+) {
+  await database.write(async () => {
+    const timestamp = now();
+    const routineExercise = await database.collections
+      .get('routine_exercises')
+      .find(routineExerciseId) as any;
+    const exercise = await database.collections.get('exercises').find(newExerciseId) as any;
+    const sets = await database.collections
+      .get('workout_sets')
+      .query(
+        Q.where('session_id', sessionId),
+        Q.where('routine_exercise_id', routineExerciseId),
+        isLiveRecordQuery(),
+      )
+      .fetch();
+
+    await routineExercise.update((record: any) => {
+      record.exerciseId = newExerciseId;
+      record.defaultWeightKg = exercise.isBodyweight ? 0 : record.defaultWeightKg;
+      record.targetRpe = exercise.isBodyweight ? 0 : record.targetRpe;
+      record.focusMetric = exercise.isBodyweight ? 'total_reps' : record.focusMetric || 'previous';
+      record.updatedAt = timestamp;
+    });
+
+    for (const set of sets as any[]) {
+      await set.update((record: any) => {
+        record.exerciseId = newExerciseId;
+        record.weightKg = exercise.isBodyweight ? 0 : record.weightKg;
+        record.rpe = exercise.isBodyweight ? 0 : record.rpe;
         record.updatedAt = timestamp;
       });
     }
@@ -442,14 +516,74 @@ export async function updateRoutineExerciseNote(routineExerciseId: string, note:
   });
 }
 
+export async function updateRoutineExerciseFocusMetric(
+  routineExerciseId: string,
+  focusMetric: FocusMetric,
+) {
+  await database.write(async () => {
+    const routineExercise = await database.collections
+      .get('routine_exercises')
+      .find(routineExerciseId) as any;
+    const timestamp = now();
+
+    await routineExercise.update((record: any) => {
+      record.focusMetric = focusMetric;
+      record.updatedAt = timestamp;
+    });
+  });
+}
+
+export async function updateRoutineExerciseRestTimer(
+  sessionId: string,
+  routineExerciseId: string,
+  restSeconds: number,
+) {
+  await database.write(async () => {
+    const timestamp = now();
+    const routineExercise = await database.collections
+      .get('routine_exercises')
+      .find(routineExerciseId) as any;
+    const sets = await database.collections
+      .get('workout_sets')
+      .query(
+        Q.where('session_id', sessionId),
+        Q.where('routine_exercise_id', routineExerciseId),
+        isLiveRecordQuery(),
+      )
+      .fetch();
+
+    await routineExercise.update((record: any) => {
+      record.defaultRestSeconds = restSeconds;
+      record.updatedAt = timestamp;
+    });
+
+    for (const set of sets as any[]) {
+      await set.update((record: any) => {
+        record.restSeconds = restSeconds;
+        record.updatedAt = timestamp;
+      });
+    }
+  });
+}
+
 export async function finishActiveWorkout(sessionId: string) {
   await database.write(async () => {
     const session = await database.collections.get('sessions').find(sessionId) as any;
+    const sets = await database.collections
+      .get('workout_sets')
+      .query(Q.where('session_id', sessionId), isLiveRecordQuery())
+      .fetch();
     const timestamp = now();
+
+    const totalReps = (sets as any[]).reduce(
+      (sum, set) => sum + (set.completed ? Number(set.reps || 0) : 0),
+      0,
+    );
 
     await session.update((record: any) => {
       record.status = 'completed';
       record.endedAt = timestamp;
+      record.totalReps = totalReps;
       record.totalDurationSeconds = secondsSince(record.startedAt);
       record.updatedAt = timestamp;
     });

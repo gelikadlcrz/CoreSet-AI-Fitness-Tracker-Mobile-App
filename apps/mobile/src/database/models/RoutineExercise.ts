@@ -16,6 +16,7 @@ class RoutineExercise extends Model {
   @field('default_weight_kg') defaultWeightKg!: number;
   @field('default_rest_seconds') defaultRestSeconds!: number;
   @field('note') note!: string;
+  @field('focus_metric') focusMetric!: string;
   @field('deleted_at') deletedAt!: number;
   @field('created_at') createdAt!: number;
   @field('updated_at') updatedAt!: number;

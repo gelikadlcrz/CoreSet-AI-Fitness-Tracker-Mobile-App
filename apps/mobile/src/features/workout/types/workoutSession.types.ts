@@ -1,3 +1,11 @@
+export type FocusMetric =
+  | 'previous'
+  | 'total_volume'
+  | 'volume_increase'
+  | 'total_reps'
+  | 'weight_per_rep'
+  | 'reps_per_set';
+
 export type WorkoutSetVM = {
   id: string;
   order: number;
@@ -16,8 +24,12 @@ export type WorkoutExerciseVM = {
   exerciseId: string;
   routineExerciseId: string;
   name: string;
+  baseName?: string;
   equipment?: string;
   note?: string;
+  focusMetric: FocusMetric;
+  isAiTracked: boolean;
+  isBodyweight: boolean;
   sets: WorkoutSetVM[];
 };
 
@@ -36,4 +48,5 @@ export type ExercisePickerItem = {
   equipment?: string;
   primaryMuscle?: string;
   isAiTracked?: boolean;
+  isBodyweight?: boolean;
 };

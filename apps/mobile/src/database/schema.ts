@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 3,
+  version: 4,
 
   tables: [
     tableSchema({
@@ -116,7 +116,8 @@ export const schema = appSchema({
         { name: 'default_weight_kg', type: 'number' },
         { name: 'default_rest_seconds', type: 'number' },
         { name: 'note', type: 'string', isOptional: true },
-        { name: 'deleted_at', type: 'number', isOptional: true },
+            { name: 'focus_metric', type: 'string', isOptional: true },
+            { name: 'deleted_at', type: 'number', isOptional: true },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],

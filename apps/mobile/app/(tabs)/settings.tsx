@@ -80,7 +80,7 @@ const LIGHT_THEME: ThemePalette = {
   text: '#111111',
   textSecondary: '#4F4F4F',
   textMuted: '#767676',
-  accent: '#5E6F00',
+  accent: '#FF6B00',
   border: '#C9CABC',
   divider: '#E1E1D8',
   input: '#F0F1E8',
@@ -379,6 +379,9 @@ function ProfileSummary({
         ) : (
           <Ionicons name="person-circle-outline" size={62} color={theme.textMuted} />
         )}
+        <View style={[styles.avatarEditBadge, { backgroundColor: theme.accent }]}> 
+          <Ionicons name="camera" size={13} color="#111111" />
+        </View>
       </TouchableOpacity>
 
       <View style={styles.profileTextWrap}>
@@ -395,10 +398,6 @@ function ProfileSummary({
         )}
 
         <View style={styles.profileButtonRow}>
-          <TouchableOpacity style={[styles.profileMiniButton, { backgroundColor: theme.input }]} onPress={onPickPhoto}>
-            <Text style={[styles.profileMiniText, { color: theme.text }]}>Change Photo</Text>
-          </TouchableOpacity>
-
           <TouchableOpacity style={[styles.profileMiniButton, { backgroundColor: theme.danger }]} onPress={onLogout}>
             <Text style={styles.profileLogoutText}>Log Out</Text>
           </TouchableOpacity>
@@ -1049,6 +1048,18 @@ const styles = StyleSheet.create({
   avatarImage: {
     width: '100%',
     height: '100%',
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    right: 3,
+    bottom: 3,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   profileTextWrap: {
     flex: 1,

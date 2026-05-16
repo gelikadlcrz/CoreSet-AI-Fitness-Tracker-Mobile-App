@@ -249,5 +249,17 @@ export const migrations = schemaMigrations({
         }),
       ],
     },
+    {
+      toVersion: 4,
+      steps: [
+        addColumns({
+          table: 'routine_exercises',
+          columns: [
+            { name: 'focus_metric', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
+
   ],
 });

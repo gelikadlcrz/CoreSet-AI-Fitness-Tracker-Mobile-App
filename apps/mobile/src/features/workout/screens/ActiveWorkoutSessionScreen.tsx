@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 import { pullExercises } from '../../../services/sync/pullExercises';
 import { useAppSettings } from '../../settings/hooks/useAppSettings';
@@ -29,16 +30,26 @@ import {
   getOrCreateActiveWorkoutSession,
   listAvailableExercises,
   removeExerciseFromActiveWorkout,
+  replaceExerciseInActiveWorkout,
   toggleSetCompleted,
+  updateRoutineExerciseFocusMetric,
   updateRoutineExerciseNote,
+  updateRoutineExerciseRestTimer,
 } from '../services/workoutService';
 
 import type {
   ExercisePickerItem,
+  FocusMetric,
   WorkoutExerciseVM,
   WorkoutSessionVM,
   WorkoutSetVM,
 } from '../types/workoutSession.types';
+
+const REST_OPTIONS = [60, 90, 120, 150, 180, 210, 240, 300];
+
+function isLightTheme(theme: ThemePalette) {
+  return theme.background.toLowerCase() !== '#181818' && theme.background.toLowerCase() !== '#0d0d0d';
+}
 
 function dateLabel(timestamp: number) {
   return new Date(timestamp).toLocaleDateString('en-US', {
@@ -65,6 +76,11 @@ function formatWeight(weightKg?: number, unit: WeightUnit = 'kg') {
   return String(weightKg);
 }
 
+function weightNumber(weightKg?: number, unit: WeightUnit = 'kg') {
+  if (!weightKg) return 0;
+  return unit === 'lbs' ? weightKg * 2.20462 : weightKg;
+}
+
 function valueOrDash(value?: number) {
   if (value === undefined || value === null || value === 0) return '-';
   return String(value);
@@ -78,23 +94,117 @@ function previousLabel(set: WorkoutSetVM, unit: WeightUnit) {
   return `${weight} ${unit} x ${set.previousReps}${suffix}`;
 }
 
+function focusMetricLabel(metric: FocusMetric, unit: WeightUnit) {
+  switch (metric) {
+    case 'total_volume':
+      return 'Volume';
+    case 'volume_increase':
+      return 'Δ Vol';
+    case 'total_reps':
+      return 'Reps';
+    case 'weight_per_rep':
+      return `${unit}/Rep`;
+    case 'reps_per_set':
+      return 'Reps/Set';
+    case 'previous':
+    default:
+      return 'Previous';
+  }
+}
+
+function focusMetricValue(set: WorkoutSetVM, metric: FocusMetric, unit: WeightUnit) {
+  const reps = set.reps || 0;
+  const previousReps = set.previousReps || 0;
+  const weight = weightNumber(set.weightKg, unit);
+  const previousWeight = weightNumber(set.previousWeightKg, unit);
+
+  switch (metric) {
+    case 'total_volume': {
+      if (!weight || !reps) return '-';
+      return `${Math.round(weight * reps)} ${unit}`;
+    }
+
+    case 'volume_increase': {
+      if (!weight || !reps || !previousWeight || !previousReps) return '-';
+      const diff = Math.round(weight * reps - previousWeight * previousReps);
+      return diff > 0 ? `+${diff}` : String(diff);
+    }
+
+    case 'total_reps':
+      return reps ? String(reps) : '-';
+
+    case 'weight_per_rep': {
+      if (!weight || !reps) return '-';
+      return `${(weight / reps).toFixed(1)}`;
+    }
+
+    case 'reps_per_set':
+      return reps ? `${reps}/set` : '-';
+
+    case 'previous':
+    default:
+      return previousLabel(set, unit);
+  }
+}
+
 function badgeStyle(type: string, theme: ThemePalette) {
   if (type === 'warmup') return { backgroundColor: theme.warmup };
   if (type === 'failure') return { backgroundColor: theme.failure };
   if (type === 'drop') return { backgroundColor: theme.dropset };
-  return undefined;
+  return { backgroundColor: theme.input };
+}
+
+function badgeTextColor(type: string, theme: ThemePalette) {
+  if (!isLightTheme(theme)) return '#FFFFFF';
+  if (type === 'warmup') return '#111111';
+  if (type === 'failure' || type === 'drop') return '#FFFFFF';
+  return theme.text;
+}
+
+function actionButtonColors(theme: ThemePalette) {
+  if (isLightTheme(theme)) {
+    return {
+      backgroundColor: '#FFE3D1',
+      color: '#FF5A00',
+    };
+  }
+
+  return {
+    backgroundColor: theme.accentMuted,
+    color: theme.accent,
+  };
+}
+
+function availableMetrics(isBodyweight: boolean): Array<{ key: FocusMetric; label: string; description: string }> {
+  if (isBodyweight) {
+    return [
+      { key: 'previous', label: 'Previous', description: 'Show previous performance for each set.' },
+      { key: 'total_reps', label: 'Total Reps', description: 'Show the reps completed for each set.' },
+      { key: 'reps_per_set', label: 'Reps / Set', description: 'Show set-based rep targets for bodyweight movements.' },
+    ];
+  }
+
+  return [
+    { key: 'previous', label: 'Previous', description: 'Show previous weight and reps.' },
+    { key: 'total_volume', label: 'Total Volume', description: 'Weight multiplied by reps for each set.' },
+    { key: 'volume_increase', label: 'Volume Increase', description: 'Difference from the previous set volume.' },
+    { key: 'total_reps', label: 'Total Reps', description: 'Show reps completed for each set.' },
+    { key: 'weight_per_rep', label: 'Weight / Rep', description: 'Show load divided by reps.' },
+  ];
 }
 
 function ExercisePickerModal({
   visible,
   exercises,
   theme,
+  title,
   onClose,
   onSelect,
 }: {
   visible: boolean;
   exercises: ExercisePickerItem[];
   theme: ThemePalette;
+  title: string;
   onClose: () => void;
   onSelect: (exercise: ExercisePickerItem) => void;
 }) {
@@ -114,9 +224,9 @@ function ExercisePickerModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]}> 
+        <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]}>
           <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Add Exercise</Text>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>{title}</Text>
             <TouchableOpacity style={[styles.modalClose, { backgroundColor: theme.surfaceSecondary }]} onPress={onClose}>
               <Ionicons name="close" size={20} color={theme.text} />
             </TouchableOpacity>
@@ -154,10 +264,118 @@ function ExercisePickerModal({
                       .join(' • ')}
                   </Text>
                 </View>
+
+                {exercise.isAiTracked && (
+                  <View style={[styles.aiTag, { backgroundColor: actionButtonColors(theme).backgroundColor }]}>
+                    <Ionicons name="camera" size={13} color={actionButtonColors(theme).color} />
+                  </View>
+                )}
+
                 <Ionicons name="add-circle" size={24} color={theme.accent} />
               </TouchableOpacity>
             ))}
           </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function AnalyticsMetricModal({
+  visible,
+  exercise,
+  theme,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  exercise: WorkoutExerciseVM;
+  theme: ThemePalette;
+  onClose: () => void;
+  onSelect: (metric: FocusMetric) => void;
+}) {
+  const metrics = availableMetrics(exercise.isBodyweight);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Focus Metric</Text>
+            <TouchableOpacity style={[styles.modalClose, { backgroundColor: theme.surfaceSecondary }]} onPress={onClose}>
+              <Ionicons name="close" size={20} color={theme.text} />
+            </TouchableOpacity>
+          </View>
+
+          {metrics.map(metric => {
+            const selected = metric.key === exercise.focusMetric;
+
+            return (
+              <TouchableOpacity
+                key={metric.key}
+                style={[
+                  styles.metricOption,
+                  {
+                    backgroundColor: selected ? theme.accentMuted : theme.surfaceSecondary,
+                    borderColor: selected ? theme.accent : theme.border,
+                  },
+                ]}
+                onPress={() => onSelect(metric.key)}
+              >
+                <View style={styles.metricOptionTextWrap}>
+                  <Text style={[styles.metricOptionTitle, { color: selected ? theme.accent : theme.text }]}>
+                    {metric.label}
+                  </Text>
+                  <Text style={[styles.metricOptionDescription, { color: theme.textMuted }]}>
+                    {metric.description}
+                  </Text>
+                </View>
+
+                {selected && <Ionicons name="checkmark-circle" size={22} color={theme.accent} />}
+              </TouchableOpacity>
+            );
+          })}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function RestTimerModal({
+  visible,
+  theme,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  theme: ThemePalette;
+  onClose: () => void;
+  onSelect: (seconds: number) => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Update Rest Timer</Text>
+            <TouchableOpacity style={[styles.modalClose, { backgroundColor: theme.surfaceSecondary }]} onPress={onClose}>
+              <Ionicons name="close" size={20} color={theme.text} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.restChoiceGrid}>
+            {REST_OPTIONS.map(seconds => (
+              <TouchableOpacity
+                key={seconds}
+                style={[styles.restChoice, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
+                onPress={() => onSelect(seconds)}
+              >
+                <Text style={[styles.restChoiceText, { color: theme.text }]}>
+                  {formatSetRest(seconds)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
@@ -170,15 +388,22 @@ function ExercisePanel({
   weightUnit,
   theme,
   onRefresh,
+  onReplaceRequest,
 }: {
   exercise: WorkoutExerciseVM;
   sessionId: string;
   weightUnit: WeightUnit;
   theme: ThemePalette;
   onRefresh: () => Promise<void>;
+  onReplaceRequest: (exercise: WorkoutExerciseVM) => void;
 }) {
+  const router = useRouter();
   const [noteDraft, setNoteDraft] = useState(exercise.note || '');
   const [editVisible, setEditVisible] = useState(false);
+  const [noteVisible, setNoteVisible] = useState(false);
+  const [analyticsVisible, setAnalyticsVisible] = useState(false);
+  const [restVisible, setRestVisible] = useState(false);
+  const actionColors = actionButtonColors(theme);
   const restSeconds = exercise.sets[0]?.restSeconds || 180;
 
   const handleToggleSet = async (setId: string) => {
@@ -186,12 +411,43 @@ function ExercisePanel({
     await onRefresh();
   };
 
-  const handleAddSet = async () => {
-    await addSetToRoutineExercise(sessionId, exercise.routineExerciseId);
-    await onRefresh();
+  const handleAddSet = () => {
+    Alert.alert('Add Set', 'Choose the set type to add.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Warm-up Set',
+        onPress: async () => {
+          await addSetToRoutineExercise(sessionId, exercise.routineExerciseId, 'warmup');
+          await onRefresh();
+        },
+      },
+      {
+        text: 'Working Set',
+        onPress: async () => {
+          await addSetToRoutineExercise(sessionId, exercise.routineExerciseId, 'normal');
+          await onRefresh();
+        },
+      },
+      {
+        text: 'Failure Set',
+        onPress: async () => {
+          await addSetToRoutineExercise(sessionId, exercise.routineExerciseId, 'failure');
+          await onRefresh();
+        },
+      },
+      {
+        text: 'Drop Set',
+        onPress: async () => {
+          await addSetToRoutineExercise(sessionId, exercise.routineExerciseId, 'drop');
+          await onRefresh();
+        },
+      },
+    ]);
   };
 
   const handleRemoveExercise = () => {
+    setEditVisible(false);
+
     Alert.alert('Remove exercise?', `Remove ${exercise.name} from this workout?`, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -207,8 +463,24 @@ function ExercisePanel({
 
   const handleSaveNote = async () => {
     await updateRoutineExerciseNote(exercise.routineExerciseId, noteDraft.trim());
-    setEditVisible(false);
+    setNoteVisible(false);
     await onRefresh();
+  };
+
+  const handleSelectMetric = async (metric: FocusMetric) => {
+    await updateRoutineExerciseFocusMetric(exercise.routineExerciseId, metric);
+    setAnalyticsVisible(false);
+    await onRefresh();
+  };
+
+  const handleSelectRest = async (seconds: number) => {
+    await updateRoutineExerciseRestTimer(sessionId, exercise.routineExerciseId, seconds);
+    setRestVisible(false);
+    await onRefresh();
+  };
+
+  const openCapture = () => {
+    router.push('/capture');
   };
 
   return (
@@ -219,29 +491,46 @@ function ExercisePanel({
         </Text>
 
         <View style={styles.exerciseActions}>
-          <TouchableOpacity style={[styles.smallIconButton, { backgroundColor: theme.iconOlive }]}> 
-            <Ionicons name="analytics" size={14} color={theme.accent} />
+          {exercise.isAiTracked && (
+            <TouchableOpacity
+              style={[styles.cameraIconButton, { backgroundColor: isLightTheme(theme) ? '#FF5A00' : '#9B4B2E' }]}
+              onPress={openCapture}
+              activeOpacity={0.86}
+            >
+              <Ionicons name="camera" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.smallIconButton, { backgroundColor: actionColors.backgroundColor }]}
+            onPress={() => setAnalyticsVisible(true)}
+            activeOpacity={0.86}
+          >
+            <Ionicons name="analytics" size={14} color={actionColors.color} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.smallIconButton, { backgroundColor: theme.iconOlive }]}
+            style={[styles.smallIconButton, { backgroundColor: actionColors.backgroundColor }]}
             onPress={() => setEditVisible(true)}
+            activeOpacity={0.86}
           >
-            <Ionicons name="ellipsis-horizontal" size={16} color={theme.accent} />
+            <Ionicons name="ellipsis-horizontal" size={16} color={actionColors.color} />
           </TouchableOpacity>
         </View>
       </View>
 
-      <View style={[styles.setCard, { backgroundColor: theme.surfaceSecondary }]}> 
+      <View style={[styles.setCard, { backgroundColor: theme.surfaceSecondary }]}>
         {!!exercise.note && (
           <Text style={[styles.note, { color: theme.textMuted }]} numberOfLines={1}>
             Note: {exercise.note}
           </Text>
         )}
 
-        <View style={[styles.tableHeader, { borderTopColor: theme.border }]}> 
+        <View style={[styles.tableHeader, { borderTopColor: theme.border }]}>
           <Text style={[styles.headerText, styles.setColumn, { color: theme.text }]}>Set</Text>
-          <Text style={[styles.headerText, styles.previousColumn, { color: theme.text }]}>Previous</Text>
+          <Text style={[styles.headerText, styles.previousColumn, { color: theme.text }]}>
+            {focusMetricLabel(exercise.focusMetric, weightUnit)}
+          </Text>
           <Text style={[styles.headerText, styles.numericColumn, { color: theme.text }]}>{weightUnit}</Text>
           <Text style={[styles.headerText, styles.numericColumn, { color: theme.text }]}>Reps</Text>
           <Text style={[styles.headerText, styles.numericColumn, { color: theme.text }]}>RPE</Text>
@@ -251,31 +540,41 @@ function ExercisePanel({
         {exercise.sets.map(set => (
           <View key={set.id} style={styles.setRowWrap}>
             <View style={styles.setRow}>
-              <View style={[styles.setBadge, { backgroundColor: theme.input }, badgeStyle(set.type, theme)]}>
-                <Text style={[styles.setBadgeText, { color: theme.text }]}>{setBadge(set)}</Text>
+              <View style={[styles.setBadge, badgeStyle(set.type, theme)]}>
+                <Text style={[styles.setBadgeText, { color: badgeTextColor(set.type, theme) }]}>
+                  {setBadge(set)}
+                </Text>
               </View>
 
               <Text style={[styles.setText, styles.previousColumn, { color: theme.text }]} numberOfLines={2}>
-                {previousLabel(set, weightUnit)}
+                {focusMetricValue(set, exercise.focusMetric, weightUnit)}
               </Text>
 
-              <Text style={[styles.inputPill, styles.numericColumn, { backgroundColor: theme.input, color: theme.text }]} numberOfLines={1}>
+              <Text
+                style={[styles.inputPill, styles.numericColumn, { backgroundColor: theme.input, color: theme.text }]}
+                numberOfLines={1}
+              >
                 {formatWeight(set.weightKg, weightUnit)}
               </Text>
 
-              <Text style={[styles.inputPill, styles.numericColumn, { backgroundColor: theme.input, color: theme.text }]} numberOfLines={1}>
+              <Text
+                style={[styles.inputPill, styles.numericColumn, { backgroundColor: theme.input, color: theme.text }]}
+                numberOfLines={1}
+              >
                 {valueOrDash(set.reps)}
               </Text>
 
-              <Text style={[styles.inputPill, styles.numericColumn, { backgroundColor: theme.input, color: theme.text }]} numberOfLines={1}>
+              <Text
+                style={[styles.inputPill, styles.numericColumn, { backgroundColor: theme.input, color: theme.text }]}
+                numberOfLines={1}
+              >
                 {valueOrDash(set.rpe)}
               </Text>
 
               <TouchableOpacity
                 style={[
                   styles.checkPill,
-                  { backgroundColor: theme.inactive },
-                  set.completed && { backgroundColor: theme.success },
+                  { backgroundColor: set.completed ? theme.success : theme.inactive },
                 ]}
                 onPress={() => handleToggleSet(set.id)}
                 activeOpacity={0.85}
@@ -299,21 +598,77 @@ function ExercisePanel({
         ))}
 
         <TouchableOpacity style={[styles.addSetButton, { backgroundColor: theme.input }]} onPress={handleAddSet}>
-          <Text style={[styles.addSetText, { color: theme.text }]}>+ Add Set ({formatSetRest(restSeconds)})</Text>
+          <Text style={[styles.addSetText, { color: theme.text }]}>
+            + Add Set ({formatSetRest(restSeconds)})
+          </Text>
         </TouchableOpacity>
       </View>
 
       <Modal visible={editVisible} transparent animationType="fade" onRequestClose={() => setEditVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: theme.surface }]}> 
+        <Pressable style={styles.menuOverlay} onPress={() => setEditVisible(false)}>
+          <Pressable style={[styles.actionMenu, { backgroundColor: theme.surface }]}>
+            <TouchableOpacity
+              style={styles.actionMenuItem}
+              onPress={() => {
+                setEditVisible(false);
+                setNoteVisible(true);
+              }}
+            >
+              <Ionicons name="document-text" size={18} color={theme.accent} />
+              <Text style={[styles.actionMenuText, { color: theme.text }]}>Add Note</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionMenuItem}
+              onPress={() => {
+                setEditVisible(false);
+                onReplaceRequest(exercise);
+              }}
+            >
+              <Ionicons name="swap-horizontal" size={18} color={theme.accent} />
+              <Text style={[styles.actionMenuText, { color: theme.text }]}>Replace Exercise</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionMenuItem}
+              onPress={() => {
+                setEditVisible(false);
+                setRestVisible(true);
+              }}
+            >
+              <Ionicons name="timer" size={18} color={theme.accent} />
+              <Text style={[styles.actionMenuText, { color: theme.text }]}>Update Rest Timers</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionMenuItem}
+              onPress={() => {
+                setEditVisible(false);
+                setAnalyticsVisible(true);
+              }}
+            >
+              <Ionicons name="options" size={18} color={theme.accent} />
+              <Text style={[styles.actionMenuText, { color: theme.text }]}>Preferences</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionMenuItem} onPress={handleRemoveExercise}>
+              <Ionicons name="trash" size={18} color={theme.danger} />
+              <Text style={[styles.actionMenuText, { color: theme.danger }]}>Remove Exercise</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={noteVisible} transparent animationType="fade" onRequestClose={() => setNoteVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setNoteVisible(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Exercise</Text>
-              <TouchableOpacity style={[styles.modalClose, { backgroundColor: theme.surfaceSecondary }]} onPress={() => setEditVisible(false)}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Exercise Note</Text>
+              <TouchableOpacity style={[styles.modalClose, { backgroundColor: theme.surfaceSecondary }]} onPress={() => setNoteVisible(false)}>
                 <Ionicons name="close" size={20} color={theme.text} />
               </TouchableOpacity>
             </View>
 
-            <Text style={[styles.editLabel, { color: theme.textMuted }]}>Exercise note</Text>
             <TextInput
               value={noteDraft}
               onChangeText={setNoteDraft}
@@ -332,17 +687,24 @@ function ExercisePanel({
             <TouchableOpacity style={[styles.editAction, { backgroundColor: theme.accent }]} onPress={handleSaveNote}>
               <Text style={styles.editActionText}>Save Note</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.editAction, { backgroundColor: theme.input }]} onPress={handleAddSet}>
-              <Text style={[styles.editSecondaryText, { color: theme.text }]}>Add Set</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.editAction, { backgroundColor: theme.danger }]} onPress={handleRemoveExercise}>
-              <Text style={styles.editDangerText}>Remove Exercise</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
+
+      <AnalyticsMetricModal
+        visible={analyticsVisible}
+        exercise={exercise}
+        theme={theme}
+        onClose={() => setAnalyticsVisible(false)}
+        onSelect={handleSelectMetric}
+      />
+
+      <RestTimerModal
+        visible={restVisible}
+        theme={theme}
+        onClose={() => setRestVisible(false)}
+        onSelect={handleSelectRest}
+      />
     </View>
   );
 }
@@ -352,6 +714,7 @@ export default function ActiveWorkoutSessionScreen() {
   const [session, setSession] = useState<WorkoutSessionVM | null>(null);
   const [availableExercises, setAvailableExercises] = useState<ExercisePickerItem[]>([]);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [replaceTarget, setReplaceTarget] = useState<WorkoutExerciseVM | null>(null);
 
   const load = async () => {
     try {
@@ -378,15 +741,33 @@ export default function ActiveWorkoutSessionScreen() {
   const handleAddExercise = async (exercise: ExercisePickerItem) => {
     if (!session) return;
 
+    if (replaceTarget) {
+      await replaceExerciseInActiveWorkout(session.id, replaceTarget.routineExerciseId, exercise.id);
+      setReplaceTarget(null);
+      setPickerVisible(false);
+      await load();
+      return;
+    }
+
     await addExerciseToActiveSession(session.id, session.routineId, exercise.id);
     setPickerVisible(false);
     await load();
   };
 
+  const handleReplaceRequest = (exercise: WorkoutExerciseVM) => {
+    setReplaceTarget(exercise);
+    setPickerVisible(true);
+  };
+
+  const handleOpenAddExercise = () => {
+    setReplaceTarget(null);
+    setPickerVisible(true);
+  };
+
   const handleFinish = () => {
     if (!session) return;
 
-    Alert.alert('Finish workout?', 'This will complete the active workout session.', [
+    Alert.alert('Finish workout?', 'This will save the current workout session.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Finish',
@@ -401,7 +782,7 @@ export default function ActiveWorkoutSessionScreen() {
   const handleCancel = () => {
     if (!session) return;
 
-    Alert.alert('Cancel workout?', 'This will remove the current active workout session locally.', [
+    Alert.alert('Cancel workout?', 'This will cancel the current workout session.', [
       { text: 'Keep Workout', style: 'cancel' },
       {
         text: 'Cancel Workout',
@@ -416,7 +797,7 @@ export default function ActiveWorkoutSessionScreen() {
 
   if (!session) {
     return (
-      <View style={[styles.root, styles.center, { backgroundColor: theme.background }]}> 
+      <View style={[styles.root, styles.center, { backgroundColor: theme.background }]}>
         <Text style={[styles.loading, { color: theme.textMuted }]}>Loading workout...</Text>
       </View>
     );
@@ -431,9 +812,9 @@ export default function ActiveWorkoutSessionScreen() {
       >
         <Text style={[styles.screenLabel, { color: theme.textMuted }]}>Active Workout Session</Text>
 
-        <View style={[styles.sessionCard, { backgroundColor: theme.surface }]}> 
+        <View style={[styles.sessionCard, { backgroundColor: theme.surface }]}>
           <View style={styles.topRow}>
-            <TouchableOpacity style={[styles.backCircle, { backgroundColor: theme.surfaceSecondary }]}> 
+            <TouchableOpacity style={[styles.backCircle, { backgroundColor: theme.surfaceSecondary }]}>
               <Ionicons name="chevron-back" size={24} color={theme.text} />
             </TouchableOpacity>
 
@@ -457,7 +838,7 @@ export default function ActiveWorkoutSessionScreen() {
 
           <View style={styles.metaRow}>
             <Ionicons name="calendar-outline" size={15} color={theme.textSecondary} />
-            <Text style={[styles.metaText, { color: theme.textSecondary }]}> 
+            <Text style={[styles.metaText, { color: theme.textSecondary }]}>
               {formatDuration(session.elapsedSeconds)}
             </Text>
           </View>
@@ -470,10 +851,11 @@ export default function ActiveWorkoutSessionScreen() {
               weightUnit={settings.preferences.weightUnit}
               theme={theme}
               onRefresh={load}
+              onReplaceRequest={handleReplaceRequest}
             />
           ))}
 
-          <TouchableOpacity style={[styles.addExerciseButton, { backgroundColor: theme.accent }]} onPress={() => setPickerVisible(true)}>
+          <TouchableOpacity style={[styles.addExerciseButton, { backgroundColor: theme.accent }]} onPress={handleOpenAddExercise}>
             <Text style={styles.addExerciseText}>Add Exercises</Text>
           </TouchableOpacity>
 
@@ -487,7 +869,11 @@ export default function ActiveWorkoutSessionScreen() {
         visible={pickerVisible}
         exercises={availableExercises}
         theme={theme}
-        onClose={() => setPickerVisible(false)}
+        title={replaceTarget ? 'Replace Exercise' : 'Add Exercise'}
+        onClose={() => {
+          setPickerVisible(false);
+          setReplaceTarget(null);
+        }}
         onSelect={handleAddExercise}
       />
     </>
@@ -579,6 +965,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginLeft: 8,
   },
+  cameraIconButton: {
+    borderRadius: 12,
+    width: 38,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+  },
   smallIconButton: {
     borderRadius: 999,
     minWidth: 32,
@@ -608,7 +1002,7 @@ const styles = StyleSheet.create({
   },
   headerText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
   },
   setColumn: {
@@ -617,7 +1011,7 @@ const styles = StyleSheet.create({
   },
   previousColumn: {
     flex: 1,
-    minWidth: 58,
+    minWidth: 72,
     paddingHorizontal: 3,
     textAlign: 'left',
   },
@@ -719,6 +1113,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  actionMenu: {
+    width: '88%',
+    maxWidth: 340,
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  actionMenuItem: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+  },
+  actionMenuText: {
+    marginLeft: 10,
+    fontSize: 15,
+    fontWeight: '800',
+  },
   modalCard: {
     maxHeight: '78%',
     borderRadius: 24,
@@ -772,10 +1191,54 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
   },
-  editLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 6,
+  aiTag: {
+    width: 28,
+    height: 24,
+    borderRadius: 12,
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricOption: {
+    minHeight: 66,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  metricOptionTextWrap: {
+    flex: 1,
+    marginRight: 8,
+  },
+  metricOptionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  metricOptionDescription: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  restChoiceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+  },
+  restChoice: {
+    width: '31%',
+    marginHorizontal: 4,
+    marginBottom: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  restChoiceText: {
+    fontSize: 15,
+    fontWeight: '900',
   },
   editInput: {
     borderWidth: 1,
@@ -793,13 +1256,6 @@ const styles = StyleSheet.create({
   },
   editActionText: {
     color: '#000000',
-    fontWeight: '900',
-  },
-  editSecondaryText: {
-    fontWeight: '900',
-  },
-  editDangerText: {
-    color: '#FFFFFF',
     fontWeight: '900',
   },
 });
