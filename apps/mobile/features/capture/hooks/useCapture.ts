@@ -440,9 +440,13 @@ export function useCapture() {
         inferenceInFlightRef.current = true;
 
         const windowTensor = bufferRef.current.getWindow();
-        const windowStart = windowStartRef.current;
 
-        windowStartRef.current = frameIndex;
+        // The TemporalBuffer always contains the latest WINDOW_SIZE frames.
+        // So the current window starts at frameIndex - WINDOW_SIZE.
+        // This prevents duplicate rep peaks from overlapping windows.
+        const windowStart = Math.max(0, frameIndex - WINDOW_SIZE);
+
+        runStgcn(windowTensor, windowStart);
 
         console.log(
           `STGCN gate: windowMotion=${lastWindowMotionRef.current.toFixed(4)}`
