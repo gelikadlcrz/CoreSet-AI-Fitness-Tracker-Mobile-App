@@ -272,6 +272,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    zIndex: 20,
+    elevation: 20,
   },
 
   headerLeft: {
@@ -338,7 +340,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: 128,
+    bottom: 168,
     borderRadius: 22,
     padding: 16,
     backgroundColor: 'rgba(13, 13, 13, 0.78)',
@@ -346,6 +348,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.12)',
     flexDirection: 'row',
     alignItems: 'center',
+    zIndex: 20,
+    elevation: 20,
   },
 
   instructionIcon: {
@@ -377,11 +381,13 @@ const styles = StyleSheet.create({
 
   controls: {
     position: 'absolute',
-    bottom: 28,
+    bottom: 82,
     left: 16,
     right: 16,
     flexDirection: 'row',
     gap: 12,
+    zIndex: 30,
+    elevation: 30,
   },
 
   controlButton: {
@@ -390,6 +396,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 31,
+    elevation: 31,
   },
 
   resetButton: {
