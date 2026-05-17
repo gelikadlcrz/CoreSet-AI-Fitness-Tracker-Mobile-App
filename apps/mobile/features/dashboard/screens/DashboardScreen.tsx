@@ -148,11 +148,11 @@ export default function DashboardScreen() {
   }, []);
 
   const goToCapture = useCallback(() => {
-    router.push(DASHBOARD_ROUTES.captureEmpty);
+    router.push(DASHBOARD_ROUTES.captureEmpty as any);
   }, [router]);
 
   const goToRoutineCapture = useCallback((routineId: string) => {
-    router.push(DASHBOARD_ROUTES.captureRoutine(routineId));
+    router.push(DASHBOARD_ROUTES.captureRoutine(routineId) as any);
   }, [router]);
 
   if (isLoading || !dashboard) {
@@ -173,7 +173,7 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Header onProfilePress={() => router.push(DASHBOARD_ROUTES.profile)} />
+        <Header onProfilePress={() => router.push(DASHBOARD_ROUTES.profile as any)} />
 
         <View style={styles.greetingWrap}>
           <Text style={styles.greeting}>{dashboard.greeting}</Text>
@@ -186,7 +186,7 @@ export default function DashboardScreen() {
           icon="barbell-outline"
           title="Routine Quick-Launch"
           actionLabel="See all"
-          onActionPress={() => router.push(DASHBOARD_ROUTES.routines)}
+          onActionPress={() => router.push(DASHBOARD_ROUTES.routines as any)}
         />
 
         <ScrollView
@@ -207,7 +207,7 @@ export default function DashboardScreen() {
           icon="pulse-outline"
           title="Recent Activity"
           actionLabel="View all"
-          onActionPress={() => router.push(DASHBOARD_ROUTES.analytics)}
+          onActionPress={() => router.push(DASHBOARD_ROUTES.analytics as any)}
         />
 
         <View style={styles.activityList}>

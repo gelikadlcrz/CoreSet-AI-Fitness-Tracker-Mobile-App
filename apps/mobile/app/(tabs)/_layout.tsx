@@ -150,6 +150,15 @@ export default function TabsLayout() {
           ),
         }}
       />
+
+
+      <Tabs.Screen
+        name="capture"
+        options={{
+          href: null,
+          title: 'CAPTURE',
+        }}
+      />
     </Tabs>
   );
 }

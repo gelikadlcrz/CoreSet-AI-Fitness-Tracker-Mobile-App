@@ -1,3 +1,3 @@
-import CameraView from '../../features/capture/camera/CameraView';
-
-export default CameraView;
+export { default } from './camera/CameraView';
+export { default as CameraView } from './camera/CameraView';
+export { useCapture } from './hooks/useCapture';
