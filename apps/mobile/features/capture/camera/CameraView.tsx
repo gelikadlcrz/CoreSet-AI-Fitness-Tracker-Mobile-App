@@ -1,12 +1,13 @@
 /**
  * CameraView (capture/camera/CameraView.tsx)
  *
- * Main camera screen. Handles:
- *  - Camera permission flow
- *  - MediaPipe camera setup
- *  - RepOverlay rendering
- *  - SkeletonOverlay rendering
- *  - Start / Stop / Reset controls
+ * Main camera screen.
+ * Handles:
+ * - Camera permission flow
+ * - MediaPipe camera setup
+ * - Rep overlay
+ * - Skeleton overlay
+ * - Start / Stop / Reset controls
  */
 
 import React, { useEffect } from 'react';
@@ -19,9 +20,12 @@ import {
   View,
 } from 'react-native';
 
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCameraPermission } from 'react-native-vision-camera';
-
 import { MediapipeCamera } from 'react-native-mediapipe/src/shared/mediapipeCamera';
+
+import { COLORS } from '../../../shared/theme';
 
 import { useCapture } from '../hooks/useCapture';
 import { RepOverlay } from '../overlays/RepOverlay';
@@ -53,10 +57,19 @@ export default function CameraView() {
   if (!hasPermission) {
     return (
       <View style={styles.center}>
-        <Text style={styles.permText}>Camera permission required.</Text>
+        <View style={styles.permissionIcon}>
+          <Ionicons name="camera-outline" size={34} color={COLORS.accent} />
+        </View>
 
-        <Pressable style={styles.button} onPress={requestPermission}>
-          <Text style={styles.buttonText}>Grant Permission</Text>
+        <Text style={styles.permissionTitle}>Camera Access Needed</Text>
+
+        <Text style={styles.permissionText}>
+          CoreSet uses your camera to track your exercise form and count reps
+          on-device.
+        </Text>
+
+        <Pressable style={styles.permissionButton} onPress={requestPermission}>
+          <Text style={styles.permissionButtonText}>Grant Permission</Text>
         </Pressable>
       </View>
     );
@@ -65,9 +78,12 @@ export default function CameraView() {
   if (!state.isReady) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color="#00E5FF" size="large" />
-        <Text style={[styles.permText, { marginTop: 16 }]}>
-          Loading AI model…
+        <ActivityIndicator color={COLORS.accent} size="large" />
+
+        <Text style={styles.loadingTitle}>Preparing AI Capture</Text>
+
+        <Text style={styles.permissionText}>
+          Loading pose tracking and exercise recognition models…
         </Text>
       </View>
     );
@@ -82,41 +98,100 @@ export default function CameraView() {
         resizeMode="cover"
       />
 
+      <View pointerEvents="none" style={styles.cameraShade} />
+
       <SkeletonOverlay
         landmarks={state.landmarks}
         frameSize={state.frameSize}
         mirror
       />
 
-      <RepOverlay
-        repCount={state.repCount}
-        exerciseClass={state.exerciseClass}
-        classConfidence={state.classConfidence}
-        isRunning={state.isRunning}
-        fps={state.fps}
-      />
+      <SafeAreaView pointerEvents="box-none" style={styles.safeArea}>
+        <View pointerEvents="none" style={styles.header}>
+          <View>
+            <Text style={styles.eyebrow}>LIVE CAPTURE</Text>
+            <Text style={styles.title}>CoreSet AI</Text>
+          </View>
 
-      <View style={styles.controls}>
-        <Pressable
-          style={[styles.ctrlBtn, styles.resetBtn]}
-          onPress={resetReps}
-        >
-          <Text style={styles.ctrlBtnText}>RESET</Text>
-        </Pressable>
+          <View
+            style={[
+              styles.statusPill,
+              state.isRunning ? styles.statusRunning : styles.statusPaused,
+            ]}
+          >
+            <View
+              style={[
+                styles.statusDot,
+                state.isRunning ? styles.dotRunning : styles.dotPaused,
+              ]}
+            />
 
-        <Pressable
-          style={[
-            styles.ctrlBtn,
-            styles.mainBtn,
-            state.isRunning && styles.stopBtn,
-          ]}
-          onPress={state.isRunning ? stopCapture : startCapture}
-        >
-          <Text style={styles.mainBtnText}>
-            {state.isRunning ? 'STOP' : 'START'}
-          </Text>
-        </Pressable>
-      </View>
+            <Text style={styles.statusText}>
+              {state.isRunning ? 'Tracking' : 'Ready'}
+            </Text>
+          </View>
+        </View>
+
+        <RepOverlay
+          repCount={state.repCount}
+          exerciseClass={state.exerciseClass}
+          classConfidence={state.classConfidence}
+          isRunning={state.isRunning}
+          fps={state.fps}
+        />
+
+        {!state.isRunning && (
+          <View pointerEvents="none" style={styles.instructionCard}>
+            <View style={styles.instructionIcon}>
+              <Ionicons name="body-outline" size={20} color={COLORS.accent} />
+            </View>
+
+            <View style={styles.instructionCopy}>
+              <Text style={styles.instructionTitle}>Before you start</Text>
+
+              <Text style={styles.instructionText}>
+                Keep your full body visible. Move slowly and complete each rep
+                fully for better tracking.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        <View style={styles.controls}>
+          <Pressable
+            style={[styles.controlButton, styles.resetButton]}
+            onPress={resetReps}
+          >
+            <Ionicons name="refresh-outline" size={18} color={COLORS.text} />
+
+            <Text style={styles.resetButtonText}>Reset</Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.controlButton,
+              styles.mainButton,
+              state.isRunning && styles.stopButton,
+            ]}
+            onPress={state.isRunning ? stopCapture : startCapture}
+          >
+            <Ionicons
+              name={state.isRunning ? 'stop' : 'play'}
+              size={18}
+              color={state.isRunning ? COLORS.text : '#000'}
+            />
+
+            <Text
+              style={[
+                styles.mainButtonText,
+                state.isRunning && styles.stopButtonText,
+              ]}
+            >
+              {state.isRunning ? 'Stop' : 'Start'}
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
     </View>
   );
 }
@@ -127,82 +202,235 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
 
+  cameraShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+  },
+
+  safeArea: {
+    flex: 1,
+  },
+
   center: {
     flex: 1,
-    backgroundColor: '#0A0A0F',
+    backgroundColor: COLORS.background,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 28,
   },
 
-  permText: {
-    color: '#FFFFFF99',
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 24,
+  permissionIcon: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    backgroundColor: 'rgba(232, 255, 42, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(232, 255, 42, 0.30)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
 
-  button: {
-    marginTop: 20,
-    backgroundColor: '#00E5FF',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 10,
+  permissionTitle: {
+    color: COLORS.text,
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    marginBottom: 10,
   },
 
-  buttonText: {
-    color: '#000',
-    fontWeight: '700',
+  loadingTitle: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 18,
+    marginBottom: 8,
+  },
+
+  permissionText: {
+    color: COLORS.textMuted,
     fontSize: 15,
-    letterSpacing: 1,
+    lineHeight: 23,
+    textAlign: 'center',
+    maxWidth: 300,
+  },
+
+  permissionButton: {
+    marginTop: 24,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 18,
+  },
+
+  permissionButtonText: {
+    color: '#000',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+
+  header: {
+    marginHorizontal: 18,
+    marginTop: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    borderRadius: 26,
+    backgroundColor: 'rgba(13, 13, 13, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  eyebrow: {
+    color: COLORS.accent,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.6,
+  },
+
+  title: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+    marginTop: 2,
+  },
+
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+
+  statusRunning: {
+    backgroundColor: 'rgba(24, 209, 47, 0.14)',
+    borderColor: 'rgba(24, 209, 47, 0.35)',
+  },
+
+  statusPaused: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+  },
+
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginRight: 7,
+  },
+
+  dotRunning: {
+    backgroundColor: COLORS.success,
+  },
+
+  dotPaused: {
+    backgroundColor: COLORS.textMuted,
+  },
+
+  statusText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  instructionCard: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    bottom: 132,
+    borderRadius: 24,
+    padding: 16,
+    backgroundColor: 'rgba(13, 13, 13, 0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  instructionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(232, 255, 42, 0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+
+  instructionCopy: {
+    flex: 1,
+  },
+
+  instructionTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 3,
+  },
+
+  instructionText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
   controls: {
     position: 'absolute',
-    bottom: 48,
-    left: 0,
-    right: 0,
+    bottom: 36,
+    left: 18,
+    right: 18,
     flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 20,
-    paddingHorizontal: 32,
+    gap: 12,
   },
 
-  ctrlBtn: {
-    minWidth: 110,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 14,
+  controlButton: {
+    height: 58,
+    borderRadius: 22,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  resetBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+  resetButton: {
+    flex: 0.9,
+    backgroundColor: 'rgba(13, 13, 13, 0.76)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.24)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
   },
 
-  mainBtn: {
-    backgroundColor: '#00E5FF',
+  mainButton: {
+    flex: 1.25,
+    backgroundColor: COLORS.accent,
   },
 
-  stopBtn: {
-    backgroundColor: '#FF3B30',
+  stopButton: {
+    backgroundColor: COLORS.danger,
   },
 
-  ctrlBtnText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-
-  mainBtnText: {
-    color: '#000',
+  resetButtonText: {
+    color: COLORS.text,
     fontSize: 15,
+    fontWeight: '800',
+    marginLeft: 8,
+  },
+
+  mainButtonText: {
+    color: '#000',
+    fontSize: 16,
     fontWeight: '900',
-    letterSpacing: 1,
+    marginLeft: 8,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+
+  stopButtonText: {
+    color: COLORS.text,
   },
 });

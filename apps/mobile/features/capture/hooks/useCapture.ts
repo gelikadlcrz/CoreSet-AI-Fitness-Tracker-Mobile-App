@@ -20,7 +20,7 @@ import { RepCounter, type RepEvent } from '../postprocessing/RepCounter';
 const MODEL_NAME = 'pose_landmarker_full.task';
 
 const STRIDE = Math.floor(WINDOW_SIZE / 2);
-const LANDMARK_UI_UPDATE_MS = 80;
+const LANDMARK_UI_UPDATE_MS = 33;
 const LANDMARK_SMOOTHING_ALPHA = 0.35;
 
 const MIN_CLASS_CONFIDENCE_FOR_REPS = 0.55;
@@ -31,10 +31,10 @@ const MOTION_WINDOW_FRAMES = 48;
 // Rep-like motion thresholds in radians.
 // Higher = stricter. Lower = more sensitive.
 const MIN_REP_MOTION_BY_CLASS: Record<ExerciseClass, number> = {
-  squat: 0.55,
-  push_up: 0.55,
-  bench_press: 0.55,
-  pull_up: 0.55,
+  squat: 0.50,
+  push_up: 0.50,
+  bench_press: 0.50,
+  pull_up: 0.50,
 };
 
 type RawLandmarks = Landmark3D[];

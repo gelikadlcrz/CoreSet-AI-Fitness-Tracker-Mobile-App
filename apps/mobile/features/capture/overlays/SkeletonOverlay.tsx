@@ -1,6 +1,7 @@
 import React from 'react';
 import { Dimensions, StyleSheet, View } from 'react-native';
 
+import { COLORS } from '../../../shared/theme';
 import type { Landmark3D } from '../../../ml/preprocessing/normalizePose';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -30,20 +31,15 @@ interface SkeletonOverlayProps {
   mirror?: boolean;
 }
 
-function isUsableLandmark(lm: Landmark3D | undefined) {
+function isUsableLandmark(landmark: Landmark3D | undefined) {
   return (
-    Number.isFinite(lm?.x) &&
-    Number.isFinite(lm?.y) &&
-    (lm?.visibility ?? 0) > 0.35
+    Number.isFinite(landmark?.x) &&
+    Number.isFinite(landmark?.y) &&
+    (landmark?.visibility ?? 0) > 0.35
   );
 }
 
 function mapPoint(x: number, y: number) {
-  /**
-   * This is the same mapping that fixed the MediaPipe test screen.
-   * MediaPipe outputs landscape-oriented normalized coordinates, while
-   * the phone preview is displayed in portrait.
-   */
   const rotatedX = 1 - y;
   const rotatedY = x;
 
@@ -76,7 +72,7 @@ function Bone({
           top: y1,
           width: length,
           transform: [
-            { translateY: -1.5 },
+            { translateY: -1 },
             { rotateZ: `${angle}rad` },
           ],
         },
@@ -94,8 +90,8 @@ export function SkeletonOverlay({
   }
 
   const visible = landmarks
-    .map((lm, index) => ({ lm, index }))
-    .filter(({ lm }) => isUsableLandmark(lm));
+    .map((landmark, index) => ({ landmark, index }))
+    .filter(({ landmark }) => isUsableLandmark(landmark));
 
   if (visible.length < 12) {
     return null;
@@ -103,30 +99,30 @@ export function SkeletonOverlay({
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {BONES.map(([a, b], idx) => {
-        const p1 = landmarks[a];
-        const p2 = landmarks[b];
+      {BONES.map(([startIndex, endIndex]) => {
+        const start = landmarks[startIndex];
+        const end = landmarks[endIndex];
 
-        if (!isUsableLandmark(p1) || !isUsableLandmark(p2)) {
+        if (!isUsableLandmark(start) || !isUsableLandmark(end)) {
           return null;
         }
 
-        const m1 = mapPoint(p1.x, p1.y);
-        const m2 = mapPoint(p2.x, p2.y);
+        const startPoint = mapPoint(start.x, start.y);
+        const endPoint = mapPoint(end.x, end.y);
 
         return (
           <Bone
-            key={`bone-${idx}`}
-            x1={m1.x}
-            y1={m1.y}
-            x2={m2.x}
-            y2={m2.y}
+            key={`${startIndex}-${endIndex}`}
+            x1={startPoint.x}
+            y1={startPoint.y}
+            x2={endPoint.x}
+            y2={endPoint.y}
           />
         );
       })}
 
-      {visible.map(({ lm, index }) => {
-        const point = mapPoint(lm.x, lm.y);
+      {visible.map(({ landmark, index }) => {
+        const point = mapPoint(landmark.x, landmark.y);
 
         return (
           <View
@@ -134,8 +130,8 @@ export function SkeletonOverlay({
             style={[
               styles.joint,
               {
-                left: point.x - 4,
-                top: point.y - 4,
+                left: point.x - 3.5,
+                top: point.y - 3.5,
               },
             ]}
           />
@@ -148,23 +144,19 @@ export function SkeletonOverlay({
 const styles = StyleSheet.create({
   bone: {
     position: 'absolute',
-    height: 3,
+    height: 2,
     borderRadius: 999,
-    backgroundColor: 'rgba(0, 229, 255, 0.9)',
-    shadowColor: '#00E5FF',
-    shadowOpacity: 0.8,
-    shadowRadius: 4,
-    transformOrigin: '0px 1.5px',
+    backgroundColor: COLORS.accent,
+    opacity: 0.95,
+    transformOrigin: '0px 1px',
   },
 
   joint: {
     position: 'absolute',
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 999,
-    backgroundColor: '#76FF03',
-    shadowColor: '#76FF03',
-    shadowOpacity: 0.9,
-    shadowRadius: 4,
+    backgroundColor: COLORS.accent,
+    opacity: 0.95,
   },
 });
