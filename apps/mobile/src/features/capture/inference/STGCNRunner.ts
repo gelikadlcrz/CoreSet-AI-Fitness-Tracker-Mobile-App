@@ -11,10 +11,10 @@ import { WINDOW_SIZE, FEATURE_DIM } from '../utils/temporalBuffer';
 import { NUM_JOINTS } from '../../../../ml/graph/adjacencyMatrix';
 
 export const CLASS_LABELS = [
+  'squat',
+  'push_up',
   'bench_press',
   'pull_up',
-  'push_up',
-  'squat',
 ] as const;
 
 export type ExerciseClass = typeof CLASS_LABELS[number];
@@ -212,17 +212,10 @@ export class STGCNRunner {
 
     const modelAny = this.model as any;
 
-    console.log(
-      'STGCN loaded metadata:',
-      JSON.stringify(
-        {
-          inputs: modelAny?.inputs,
-          outputs: modelAny?.outputs,
-        },
-        null,
-        2
-      )
-    );
+    console.log('STGCN loaded', {
+      inputs: modelAny?.inputs,
+      outputs: modelAny?.outputs,
+    });
   }
 
   async run(windowTensor: Float32Array): Promise<STGCNOutput> {
@@ -295,10 +288,16 @@ export class STGCNRunner {
     );
 
     const classOutput =
-      outputs[classOutputIndex >= 0 ? classOutputIndex : 0] ?? [];
+      outputs.find((output) => output.length === CLASS_LABELS.length) ??
+      outputs[0] ??
+      [];
 
     const densityOutput =
-      outputs[densityOutputIndex >= 0 ? densityOutputIndex : 1] ?? [];
+      outputs.find(
+        (output) => output.length !== CLASS_LABELS.length && output.length > 0
+      ) ??
+      outputs[1] ??
+      [];
 
     const classProbs = softmax(classOutput);
     const classIdx = classProbs.indexOf(Math.max(...classProbs));
@@ -317,7 +316,9 @@ export class STGCNRunner {
     const minDensity = densityMap.length ? Math.min(...densityMap) : 0;
 
     console.log(
-      `STGCN raw: classOutputIndex=${classOutputIndex}, densityOutputIndex=${densityOutputIndex}, class=${exerciseClass}, probs=${classProbs
+      `STGCN raw: outputLens=${outputs
+        .map((output) => output.length)
+        .join(',')}, class=${exerciseClass}, probs=${classProbs
         .map((probability) => probability.toFixed(2))
         .join('/')}, densityRange=${minDensity.toFixed(
         3

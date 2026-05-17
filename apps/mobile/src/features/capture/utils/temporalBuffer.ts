@@ -7,7 +7,7 @@ import { NUM_JOINTS } from '../../../../ml/graph/adjacencyMatrix';
 import {
   STGCN_FEAT_MEAN,
   STGCN_FEAT_STD,
-} from '../../../ml/preprocessing/stgcnNormStats';
+} from '../../../../ml/preprocessing/stgcnNormStats';
 
 export const WINDOW_SIZE = 64;
 export const FEATURE_DIM = ANGLE_FEATURE_DIM;
