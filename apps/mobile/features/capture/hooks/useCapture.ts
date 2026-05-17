@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { Dimensions } from 'react-native';
+import { Dimensions, Platform } from 'react-native';
 
 import { usePoseDetection } from 'react-native-mediapipe/src/poseDetection';
 
@@ -69,6 +69,18 @@ const initialState: CaptureState = {
   motionScore: 0,
   motionThreshold: 1,
 };
+
+function mapOverlayLandmarksForPlatform(landmarks: RawLandmarks): RawLandmarks {
+  if (Platform.OS !== 'android') {
+    return landmarks;
+  }
+
+  return landmarks.map((point) => ({
+    ...point,
+    x: 1 - point.x,
+    y: point.y,
+  }));
+}
 
 function isLandmarkArray(value: any): value is RawLandmarks {
   return (
@@ -493,9 +505,13 @@ export function useCapture() {
         packet.worldLandmarks
       );
 
+      const mappedOverlayLandmarks = mapOverlayLandmarksForPlatform(
+        packet.imageLandmarks
+      );
+
       const smoothedOverlayLandmarks = smoothLandmarks(
         smoothedOverlayLandmarksRef.current,
-        packet.imageLandmarks
+        mappedOverlayLandmarks
       );
 
       smoothedModelLandmarksRef.current = smoothedModelLandmarks;
@@ -647,7 +663,7 @@ export function useCapture() {
       landmarks: null,
       frameSize: null,
       exerciseClass: null,
-      classConfidence: 0,
+      classConfidence: null,
       motionScore: 0,
       motionThreshold: 1,
     }));
