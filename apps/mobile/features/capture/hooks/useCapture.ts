@@ -23,9 +23,19 @@ const STRIDE = Math.floor(WINDOW_SIZE / 2);
 const LANDMARK_UI_UPDATE_MS = 80;
 const LANDMARK_SMOOTHING_ALPHA = 0.35;
 
-const MIN_CLASS_CONFIDENCE_FOR_REPS = 0.7;
-const MIN_STABLE_CLASS_WINDOWS = 3;
-const MIN_WINDOW_MOTION_FOR_REPS = 0.018;
+const MIN_CLASS_CONFIDENCE_FOR_REPS = 0.55;
+const MIN_STABLE_CLASS_WINDOWS = 2;
+
+const MOTION_WINDOW_FRAMES = 48;
+
+// Rep-like motion thresholds in radians.
+// Higher = stricter. Lower = more sensitive.
+const MIN_REP_MOTION_BY_CLASS: Record<ExerciseClass, number> = {
+  squat: 0.55,
+  push_up: 0.55,
+  bench_press: 0.55,
+  pull_up: 0.55,
+};
 
 type RawLandmarks = Landmark3D[];
 
@@ -126,7 +136,6 @@ function isMediaPipeFrameUsable(landmarks: RawLandmarks): boolean {
 
   const reliableCount = landmarks.filter((point) => {
     const visibility = point.visibility ?? 1;
-
     return visibility >= 0.35;
   }).length;
 
@@ -199,36 +208,135 @@ function smoothLandmarks(
   });
 }
 
-function computeFeatureMotion(
-  previous: Float32Array | null,
-  current: Float32Array
+function angleAtJoint(
+  a: Landmark3D,
+  b: Landmark3D,
+  c: Landmark3D
 ): number {
-  if (!previous || previous.length !== current.length) {
+  const ba = {
+    x: a.x - b.x,
+    y: a.y - b.y,
+    z: a.z - b.z,
+  };
+
+  const bc = {
+    x: c.x - b.x,
+    y: c.y - b.y,
+    z: c.z - b.z,
+  };
+
+  const normBa = Math.sqrt(ba.x ** 2 + ba.y ** 2 + ba.z ** 2);
+  const normBc = Math.sqrt(bc.x ** 2 + bc.y ** 2 + bc.z ** 2);
+
+  if (normBa < 1e-9 || normBc < 1e-9) {
     return 0;
   }
 
-  let total = 0;
-  let count = 0;
+  const cosine =
+    (ba.x * bc.x + ba.y * bc.y + ba.z * bc.z) / (normBa * normBc);
 
-  for (let index = 0; index < current.length; index++) {
-    const prevValue = previous[index];
-    const currentValue = current[index];
+  return Math.acos(Math.max(-1, Math.min(1, cosine)));
+}
 
-    if (Number.isFinite(prevValue) && Number.isFinite(currentValue)) {
-      total += Math.abs(currentValue - prevValue);
-      count++;
-    }
+function range(values: number[]): number {
+  const finite = values.filter((value) => Number.isFinite(value));
+
+  if (finite.length === 0) {
+    return 0;
   }
 
-  return count > 0 ? total / count : 0;
+  return Math.max(...finite) - Math.min(...finite);
 }
 
 function average(values: number[]): number {
-  if (values.length === 0) {
+  const finite = values.filter((value) => Number.isFinite(value));
+
+  if (finite.length === 0) {
     return 0;
   }
 
-  return values.reduce((total, value) => total + value, 0) / values.length;
+  return finite.reduce((total, value) => total + value, 0) / finite.length;
+}
+
+function getAngleRange(
+  frames: RawLandmarks[],
+  aIndex: number,
+  bIndex: number,
+  cIndex: number
+): number {
+  const values = frames.map((frame) => {
+    const a = frame[aIndex];
+    const b = frame[bIndex];
+    const c = frame[cIndex];
+
+    if (!a || !b || !c) {
+      return 0;
+    }
+
+    return angleAtJoint(a, b, c);
+  });
+
+  return range(values);
+}
+
+function getJointYRange(
+  frames: RawLandmarks[],
+  jointIndex: number
+): number {
+  const values = frames.map((frame) => frame[jointIndex]?.y ?? 0);
+  return range(values);
+}
+
+function getExerciseMotionGate(
+  exerciseClass: ExerciseClass,
+  frames: RawLandmarks[]
+) {
+  const recentFrames = frames.slice(-MOTION_WINDOW_FRAMES);
+
+  if (recentFrames.length < Math.floor(MOTION_WINDOW_FRAMES * 0.6)) {
+    return {
+      passed: false,
+      score: 0,
+      threshold: MIN_REP_MOTION_BY_CLASS[exerciseClass],
+    };
+  }
+
+  const leftElbowRange = getAngleRange(recentFrames, 11, 13, 15);
+  const rightElbowRange = getAngleRange(recentFrames, 12, 14, 16);
+
+  const leftKneeRange = getAngleRange(recentFrames, 23, 25, 27);
+  const rightKneeRange = getAngleRange(recentFrames, 24, 26, 28);
+
+  const leftShoulderYRange = getJointYRange(recentFrames, 11);
+  const rightShoulderYRange = getJointYRange(recentFrames, 12);
+
+  const leftHipYRange = getJointYRange(recentFrames, 23);
+  const rightHipYRange = getJointYRange(recentFrames, 24);
+
+  let score = 0;
+
+  if (exerciseClass === 'squat') {
+    const kneeMotion = average([leftKneeRange, rightKneeRange]);
+    const hipMotion = average([leftHipYRange, rightHipYRange]) * 4;
+
+    score = Math.max(kneeMotion, hipMotion);
+  } else if (exerciseClass === 'push_up' || exerciseClass === 'bench_press') {
+    score = average([leftElbowRange, rightElbowRange]);
+  } else if (exerciseClass === 'pull_up') {
+    const elbowMotion = average([leftElbowRange, rightElbowRange]);
+    const shoulderVerticalMotion =
+      average([leftShoulderYRange, rightShoulderYRange]) * 4;
+
+    score = Math.max(elbowMotion, shoulderVerticalMotion);
+  }
+
+  const threshold = MIN_REP_MOTION_BY_CLASS[exerciseClass];
+
+  return {
+    passed: score >= threshold,
+    score,
+    threshold,
+  };
 }
 
 export function useCapture() {
@@ -239,22 +347,19 @@ export function useCapture() {
   const stgcnRunnerRef = useRef(STGCNRunner.getInstance());
 
   const frameIndexRef = useRef(0);
-  const windowStartRef = useRef(0);
   const fpsTimestampsRef = useRef<number[]>([]);
   const inferenceInFlightRef = useRef(false);
 
   const smoothedModelLandmarksRef = useRef<RawLandmarks | null>(null);
   const smoothedOverlayLandmarksRef = useRef<RawLandmarks | null>(null);
 
-  const previousFeatureVectorRef = useRef<Float32Array | null>(null);
-  const motionScoresRef = useRef<number[]>([]);
+  const landmarkWindowRef = useRef<RawLandmarks[]>([]);
 
   const lastLandmarkUiUpdateRef = useRef(0);
   const isRunningRef = useRef(false);
 
   const stableClassRef = useRef<ExerciseClass | null>(null);
   const stableClassCountRef = useRef(0);
-  const lastWindowMotionRef = useRef(0);
 
   useEffect(() => {
     isRunningRef.current = state.isRunning;
@@ -339,18 +444,21 @@ export function useCapture() {
           stableClassCountRef.current >= MIN_STABLE_CLASS_WINDOWS;
 
         const isConfident = confidence >= MIN_CLASS_CONFIDENCE_FOR_REPS;
-        const hasRealMotion =
-          lastWindowMotionRef.current >= MIN_WINDOW_MOTION_FOR_REPS;
 
-        if (isStableClass && isConfident && hasRealMotion) {
+        const motionGate = getExerciseMotionGate(
+          result.exerciseClass,
+          landmarkWindowRef.current
+        );
+
+        if (isStableClass && isConfident && motionGate.passed) {
           repCounterRef.current.processWindow(result.densityMap, windowStart);
         } else {
           console.log(
-            `Rep skipped: class=${
-              result.exerciseClass
-            }, confidence=${confidence.toFixed(2)}, stable=${
-              stableClassCountRef.current
-            }, motion=${lastWindowMotionRef.current.toFixed(4)}`
+            `Rep skipped: class=${result.exerciseClass}, confidence=${confidence.toFixed(
+              2
+            )}, stable=${stableClassCountRef.current}, motionScore=${motionGate.score.toFixed(
+              3
+            )}, needed=${motionGate.threshold.toFixed(3)}`
           );
         }
       } catch (error: any) {
@@ -385,23 +493,13 @@ export function useCapture() {
       smoothedModelLandmarksRef.current = smoothedModelLandmarks;
       smoothedOverlayLandmarksRef.current = smoothedOverlayLandmarks;
 
-      const featureVector = normalisePose(smoothedModelLandmarks);
+      landmarkWindowRef.current.push(smoothedModelLandmarks);
 
-      const motionScore = computeFeatureMotion(
-        previousFeatureVectorRef.current,
-        featureVector
-      );
-
-      previousFeatureVectorRef.current = featureVector;
-
-      motionScoresRef.current.push(motionScore);
-
-      if (motionScoresRef.current.length > WINDOW_SIZE) {
-        motionScoresRef.current.shift();
+      if (landmarkWindowRef.current.length > WINDOW_SIZE) {
+        landmarkWindowRef.current.shift();
       }
 
-      lastWindowMotionRef.current = average(motionScoresRef.current);
-
+      const featureVector = normalisePose(smoothedModelLandmarks);
       bufferRef.current.push(featureVector);
 
       const frameIndex = ++frameIndexRef.current;
@@ -440,13 +538,9 @@ export function useCapture() {
         inferenceInFlightRef.current = true;
 
         const windowTensor = bufferRef.current.getWindow();
-        const windowStart = windowStartRef.current;
 
-        windowStartRef.current = frameIndex;
-
-        console.log(
-          `STGCN gate: windowMotion=${lastWindowMotionRef.current.toFixed(4)}`
-        );
+        // Correct global window start for sliding 64-frame windows.
+        const windowStart = Math.max(0, frameIndex - WINDOW_SIZE);
 
         runStgcn(windowTensor, windowStart);
       }
@@ -491,16 +585,12 @@ export function useCapture() {
     repCounterRef.current.reset();
 
     frameIndexRef.current = 0;
-    windowStartRef.current = 0;
     fpsTimestampsRef.current = [];
     inferenceInFlightRef.current = false;
 
     smoothedModelLandmarksRef.current = null;
     smoothedOverlayLandmarksRef.current = null;
-
-    previousFeatureVectorRef.current = null;
-    motionScoresRef.current = [];
-    lastWindowMotionRef.current = 0;
+    landmarkWindowRef.current = [];
 
     lastLandmarkUiUpdateRef.current = 0;
     isRunningRef.current = true;
@@ -534,15 +624,11 @@ export function useCapture() {
     repCounterRef.current.reset();
 
     frameIndexRef.current = 0;
-    windowStartRef.current = 0;
     bufferRef.current.reset();
 
     smoothedModelLandmarksRef.current = null;
     smoothedOverlayLandmarksRef.current = null;
-
-    previousFeatureVectorRef.current = null;
-    motionScoresRef.current = [];
-    lastWindowMotionRef.current = 0;
+    landmarkWindowRef.current = [];
 
     stableClassRef.current = null;
     stableClassCountRef.current = 0;

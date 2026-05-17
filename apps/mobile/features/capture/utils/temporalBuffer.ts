@@ -1,8 +1,19 @@
-import { ANGLE_FEATURE_DIM, FRAME_FEATURES } from '../../../ml/preprocessing/normalizePose';
+import {
+  ANGLE_FEATURE_DIM,
+  FRAME_FEATURES,
+} from '../../../ml/preprocessing/normalizePose';
+
 import { NUM_JOINTS } from '../../../ml/graph/adjacencyMatrix';
+
+import {
+  STGCN_FEAT_MEAN,
+  STGCN_FEAT_STD,
+} from '../../../ml/preprocessing/stgcnNormStats';
 
 export const WINDOW_SIZE = 64;
 export const FEATURE_DIM = ANGLE_FEATURE_DIM;
+
+const EPSILON = 1e-6;
 
 function cubicSplineInterpolate(values: (number | null)[]): number[] {
   const n = values.length;
@@ -10,18 +21,33 @@ function cubicSplineInterpolate(values: (number | null)[]): number[] {
   const known: number[] = [];
 
   for (let i = 0; i < n; i++) {
-    if (values[i] !== null && !isNaN(values[i] as number)) known.push(i);
+    if (values[i] !== null && !isNaN(values[i] as number)) {
+      known.push(i);
+    }
   }
 
-  if (known.length === 0) return out.map(() => 0);
-  if (known.length === 1) return out.map(() => values[known[0]] as number);
+  if (known.length === 0) {
+    return out.map(() => 0);
+  }
+
+  if (known.length === 1) {
+    return out.map(() => values[known[0]] as number);
+  }
 
   for (let i = 0; i < n; i++) {
-    if (values[i] !== null && !isNaN(values[i] as number)) continue;
+    if (values[i] !== null && !isNaN(values[i] as number)) {
+      continue;
+    }
 
     let lo = -1;
     let hi = -1;
-    for (const k of known) if (k < i) lo = k;
+
+    for (const k of known) {
+      if (k < i) {
+        lo = k;
+      }
+    }
+
     for (const k of known) {
       if (k > i) {
         hi = k;
@@ -29,15 +55,24 @@ function cubicSplineInterpolate(values: (number | null)[]): number[] {
       }
     }
 
-    if (lo === -1) out[i] = values[hi] as number;
-    else if (hi === -1) out[i] = values[lo] as number;
-    else {
+    if (lo === -1) {
+      out[i] = values[hi] as number;
+    } else if (hi === -1) {
+      out[i] = values[lo] as number;
+    } else {
       const t = (i - lo) / (hi - lo);
       out[i] = (values[lo] as number) * (1 - t) + (values[hi] as number) * t;
     }
   }
 
   return out;
+}
+
+function normalizeFeatureValue(channel: number, value: number): number {
+  const mean = STGCN_FEAT_MEAN[channel] ?? 0;
+  const std = STGCN_FEAT_STD[channel] ?? 1;
+
+  return (value - mean) / Math.max(std, EPSILON);
 }
 
 export class TemporalBuffer {
@@ -47,10 +82,16 @@ export class TemporalBuffer {
 
   push(frame: Float32Array): void {
     if (frame.length !== FRAME_FEATURES) {
-      throw new Error(`Frame must have ${FRAME_FEATURES} features, got ${frame.length}`);
+      throw new Error(
+        `Frame must have ${FRAME_FEATURES} features, got ${frame.length}`
+      );
     }
+
     this.frames.push(frame);
-    if (this.frames.length > this.windowSize) this.frames.shift();
+
+    if (this.frames.length > this.windowSize) {
+      this.frames.shift();
+    }
   }
 
   get size(): number {
@@ -59,14 +100,22 @@ export class TemporalBuffer {
 
   /**
    * Returns Float32Array shaped [C, T, V, 1] flattened in channel-major order.
+   *
+   * Training used channel-wise normalization:
+   *   normalized = (feature - feat_mean[channel]) / feat_std[channel]
    */
   getWindow(): Float32Array {
     const padded: (Float32Array | null)[] = [];
-    const firstFrame = this.frames.find(f => f !== null) ?? null;
+    const firstFrame = this.frames.find((frame) => frame !== null) ?? null;
     const needed = this.windowSize - this.frames.length;
 
-    for (let i = 0; i < needed; i++) padded.push(firstFrame);
-    for (const f of this.frames) padded.push(f);
+    for (let i = 0; i < needed; i++) {
+      padded.push(firstFrame);
+    }
+
+    for (const frame of this.frames) {
+      padded.push(frame);
+    }
 
     const T = this.windowSize;
     const V = NUM_JOINTS;
@@ -77,15 +126,23 @@ export class TemporalBuffer {
 
     for (let c = 0; c < C; c++) {
       for (let v = 0; v < V; v++) {
-        const signal: (number | null)[] = padded.map(f => {
-          if (f === null) return null;
-          const value = f[c * V + v];
+        const signal: (number | null)[] = padded.map((frame) => {
+          if (frame === null) {
+            return null;
+          }
+
+          const value = frame[c * V + v];
+
           return isNaN(value) ? null : value;
         });
 
-        const interp = cubicSplineInterpolate(signal);
+        const interpolated = cubicSplineInterpolate(signal);
+
         for (let t = 0; t < T; t++) {
-          out[c * (T * V * M) + t * (V * M) + v * M] = interp[t];
+          const rawValue = interpolated[t];
+          const normalizedValue = normalizeFeatureValue(c, rawValue);
+
+          out[c * (T * V * M) + t * (V * M) + v * M] = normalizedValue;
         }
       }
     }
