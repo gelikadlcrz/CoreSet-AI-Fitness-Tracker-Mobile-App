@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   StyleSheet,
@@ -7,7 +7,6 @@ import {
 } from 'react-native';
 
 import { COLORS } from '../../../shared/theme';
-
 import type { ExerciseClass } from '../inference/STGCNRunner';
 
 interface RepOverlayProps {
@@ -16,6 +15,8 @@ interface RepOverlayProps {
   classConfidence: number;
   isRunning: boolean;
   fps: number;
+  motionScore: number;
+  motionThreshold: number;
 }
 
 const EXERCISE_LABELS: Record<string, string> = {
@@ -23,11 +24,13 @@ const EXERCISE_LABELS: Record<string, string> = {
   pull_up: 'Pull-up',
   push_up: 'Push-up',
   squat: 'Squat',
-
   benchpress: 'Bench Press',
   pullup: 'Pull-up',
   pushup: 'Push-up',
 };
+
+const TRACK_HEIGHT = 156;
+const VISUAL_HEADROOM = 1.25;
 
 function formatExerciseLabel(exerciseClass: ExerciseClass | null): string {
   if (!exerciseClass) {
@@ -45,29 +48,60 @@ function getConfidencePercent(confidence: number): number {
   return Math.max(0, Math.min(100, Math.round(confidence * 100)));
 }
 
+function getMotionRatio(score: number, threshold: number) {
+  if (!Number.isFinite(score) || !Number.isFinite(threshold) || threshold <= 0) {
+    return 0;
+  }
+
+  return score / threshold;
+}
+
 export function RepOverlay({
   repCount,
   exerciseClass,
   classConfidence,
   isRunning,
   fps,
+  motionScore,
+  motionThreshold,
 }: RepOverlayProps) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const previousRepRef = useRef(repCount);
-
   const confidencePercent = getConfidencePercent(classConfidence);
   const exerciseLabel = formatExerciseLabel(exerciseClass);
+
+  const repScale = useRef(new Animated.Value(1)).current;
+  const meterAnim = useRef(new Animated.Value(0)).current;
+  const previousRepRef = useRef(repCount);
+
+  const motionRatio = useMemo(
+    () => getMotionRatio(motionScore, motionThreshold),
+    [motionScore, motionThreshold]
+  );
+
+  const clampedVisualRatio = Math.max(0, Math.min(VISUAL_HEADROOM, motionRatio));
+  const fillHeight = (clampedVisualRatio / VISUAL_HEADROOM) * TRACK_HEIGHT;
+
+  const thresholdFillHeight = TRACK_HEIGHT / VISUAL_HEADROOM;
+  const countZoneHeight = TRACK_HEIGHT - thresholdFillHeight;
+  const reachedCountZone = motionRatio >= 1;
+
+  useEffect(() => {
+    Animated.timing(meterAnim, {
+      toValue: fillHeight,
+      duration: 140,
+      useNativeDriver: false,
+    }).start();
+  }, [fillHeight, meterAnim]);
 
   useEffect(() => {
     if (repCount > previousRepRef.current) {
       Animated.sequence([
-        Animated.spring(scaleAnim, {
-          toValue: 1.12,
+        Animated.spring(repScale, {
+          toValue: 1.10,
           useNativeDriver: true,
           friction: 5,
           tension: 120,
         }),
-        Animated.spring(scaleAnim, {
+        Animated.spring(repScale, {
           toValue: 1,
           useNativeDriver: true,
           friction: 6,
@@ -77,82 +111,125 @@ export function RepOverlay({
     }
 
     previousRepRef.current = repCount;
-  }, [repCount, scaleAnim]);
+  }, [repCount, repScale]);
 
   return (
     <View pointerEvents="none" style={styles.container}>
       <View style={styles.card}>
-        <View style={styles.topRow}>
-          <View>
-            <Text style={styles.label}>REPS</Text>
+        <View style={styles.leftContent}>
+          <View style={styles.topRow}>
+            <View>
+              <Text style={styles.label}>REPS</Text>
 
-            <Animated.Text
+              <Animated.Text
+                style={[
+                  styles.repCount,
+                  {
+                    transform: [{ scale: repScale }],
+                  },
+                ]}
+              >
+                {repCount}
+              </Animated.Text>
+            </View>
+
+            <View
               style={[
-                styles.repCount,
-                {
-                  transform: [{ scale: scaleAnim }],
-                },
+                styles.runningBadge,
+                isRunning ? styles.badgeActive : styles.badgeIdle,
               ]}
             >
-              {repCount}
-            </Animated.Text>
+              <Text style={styles.runningBadgeText}>
+                {isRunning ? 'LIVE' : 'IDLE'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.predictionRow}>
+            <Text style={styles.label}>AI PREDICTION</Text>
+            <Text style={styles.exercise}>{exerciseLabel}</Text>
+          </View>
+
+          <View style={styles.confidenceBlock}>
+            <View style={styles.confidenceHeader}>
+              <Text style={styles.metaLabel}>Confidence</Text>
+              <Text style={styles.metaValue}>{confidencePercent}%</Text>
+            </View>
+
+            <View style={styles.confidenceTrack}>
+              <View
+                style={[
+                  styles.confidenceFill,
+                  {
+                    width: `${confidencePercent}%`,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+
+          <View style={styles.bottomStats}>
+            <View style={styles.statPill}>
+              <Text style={styles.statLabel}>FPS</Text>
+              <Text style={styles.statValue}>{fps}</Text>
+            </View>
+
+            <View style={styles.statPill}>
+              <Text style={styles.statLabel}>MODE</Text>
+              <Text style={styles.statValue}>AI</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.meterSection}>
+          <Text style={styles.meterLabel}>REP DRIVE</Text>
+
+          <View style={styles.meterTrack}>
+            <View
+              style={[
+                styles.countZone,
+                {
+                  height: countZoneHeight,
+                },
+              ]}
+            />
+
+            <View
+              style={[
+                styles.targetLine,
+                {
+                  bottom: thresholdFillHeight,
+                },
+              ]}
+            />
+
+            <Animated.View
+              style={[
+                styles.meterFill,
+                reachedCountZone && styles.meterFillActive,
+                {
+                  height: meterAnim,
+                },
+              ]}
+            />
+
+            <View style={styles.trackBorder} />
           </View>
 
           <View
             style={[
-              styles.runningBadge,
-              isRunning ? styles.badgeActive : styles.badgeIdle,
+              styles.zoneBadge,
+              reachedCountZone ? styles.zoneBadgeReady : styles.zoneBadgeWaiting,
             ]}
           >
-            <Text style={styles.runningBadgeText}>
-              {isRunning ? 'LIVE' : 'IDLE'}
+            <Text style={styles.zoneBadgeText}>
+              {reachedCountZone ? 'READY' : 'BUILD'}
             </Text>
           </View>
         </View>
-
-        <View style={styles.divider} />
-
-        <View style={styles.predictionRow}>
-          <Text style={styles.label}>AI PREDICTION</Text>
-          <Text style={styles.exercise}>{exerciseLabel}</Text>
-        </View>
-
-        <View style={styles.confidenceBlock}>
-          <View style={styles.confidenceHeader}>
-            <Text style={styles.metaLabel}>Confidence</Text>
-            <Text style={styles.metaValue}>{confidencePercent}%</Text>
-          </View>
-
-          <View style={styles.confidenceTrack}>
-            <View
-              style={[
-                styles.confidenceFill,
-                {
-                  width: `${confidencePercent}%`,
-                },
-              ]}
-            />
-          </View>
-        </View>
-
-        <View style={styles.bottomStats}>
-          <View style={styles.statPill}>
-            <Text style={styles.statLabel}>FPS</Text>
-            <Text style={styles.statValue}>{fps}</Text>
-          </View>
-
-          <View style={styles.statPill}>
-            <Text style={styles.statLabel}>MODE</Text>
-            <Text style={styles.statValue}>AI</Text>
-          </View>
-        </View>
       </View>
-
-      {isRunning && repCount > 0 && (
-        <View style={styles.repToast}>
-          <Text style={styles.repToastText}>+1 rep detected</Text>
-        </View>
-      )}
     </View>
   );
 }
@@ -160,19 +237,26 @@ export function RepOverlay({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 104,
-    left: 18,
-    right: 18,
+    top: 106,
+    left: 16,
+    right: 16,
     alignItems: 'flex-start',
   },
 
   card: {
-    width: 214,
-    padding: 16,
-    borderRadius: 26,
-    backgroundColor: 'rgba(13, 13, 13, 0.76)',
+    width: 262,
+    minHeight: 250,
+    padding: 14,
+    borderRadius: 24,
+    backgroundColor: 'rgba(13, 13, 13, 0.78)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
+    flexDirection: 'row',
+  },
+
+  leftContent: {
+    flex: 1,
+    paddingRight: 12,
   },
 
   topRow: {
@@ -185,14 +269,14 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontSize: 10,
     fontWeight: '900',
-    letterSpacing: 1.4,
+    letterSpacing: 1.3,
   },
 
   repCount: {
     color: COLORS.text,
-    fontSize: 58,
+    fontSize: 50,
     fontWeight: '900',
-    letterSpacing: -2,
+    lineHeight: 56,
     marginTop: 2,
   },
 
@@ -201,6 +285,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
+    marginTop: 4,
   },
 
   badgeActive: {
@@ -223,18 +308,18 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    marginVertical: 13,
+    marginVertical: 12,
   },
 
   predictionRow: {
-    gap: 3,
+    gap: 4,
   },
 
   exercise: {
     color: COLORS.accent,
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '900',
-    letterSpacing: -0.4,
+    lineHeight: 22,
   },
 
   confidenceBlock: {
@@ -254,7 +339,7 @@ const styles = StyleSheet.create({
   },
 
   metaValue: {
-    color: COLORS.textSecondary,
+    color: COLORS.text,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -300,20 +385,85 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  repToast: {
-    marginTop: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: 'rgba(232, 255, 42, 0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(232, 255, 42, 0.36)',
+  meterSection: {
+    width: 58,
+    alignItems: 'center',
   },
 
-  repToastText: {
-    color: COLORS.accent,
-    fontSize: 12,
+  meterLabel: {
+    color: COLORS.textMuted,
+    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 0.4,
+    letterSpacing: 1,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+
+  meterTrack: {
+    width: 34,
+    height: TRACK_HEIGHT,
+    borderRadius: 18,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    position: 'relative',
+  },
+
+  countZone: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    backgroundColor: 'rgba(232, 255, 42, 0.10)',
+  },
+
+  targetLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: 'rgba(232, 255, 42, 0.90)',
+  },
+
+  meterFill: {
+    width: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+    borderRadius: 18,
+  },
+
+  meterFillActive: {
+    backgroundColor: COLORS.accent,
+  },
+
+  trackBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 18,
+  },
+
+  zoneBadge: {
+    marginTop: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+
+  zoneBadgeWaiting: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+  },
+
+  zoneBadgeReady: {
+    backgroundColor: 'rgba(232, 255, 42, 0.14)',
+    borderColor: 'rgba(232, 255, 42, 0.35)',
+  },
+
+  zoneBadgeText: {
+    color: COLORS.text,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.8,
   },
 });

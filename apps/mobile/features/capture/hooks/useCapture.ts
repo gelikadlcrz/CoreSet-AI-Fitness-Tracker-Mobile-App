@@ -28,13 +28,11 @@ const MIN_STABLE_CLASS_WINDOWS = 2;
 
 const MOTION_WINDOW_FRAMES = 48;
 
-// Rep-like motion thresholds in radians.
-// Higher = stricter. Lower = more sensitive.
 const MIN_REP_MOTION_BY_CLASS: Record<ExerciseClass, number> = {
-  squat: 0.50,
-  push_up: 0.50,
-  bench_press: 0.50,
-  pull_up: 0.50,
+  bench_press: 0.28,
+  pull_up: 0.30,
+  push_up: 0.30,
+  squat: 0.32,
 };
 
 type RawLandmarks = Landmark3D[];
@@ -54,6 +52,8 @@ export interface CaptureState {
   error: string | null;
   landmarks: RawLandmarks | null;
   frameSize: { width: number; height: number } | null;
+  motionScore: number;
+  motionThreshold: number;
 }
 
 const initialState: CaptureState = {
@@ -66,6 +66,8 @@ const initialState: CaptureState = {
   error: null,
   landmarks: null,
   frameSize: null,
+  motionScore: 0,
+  motionThreshold: 1,
 };
 
 function isLandmarkArray(value: any): value is RawLandmarks {
@@ -450,6 +452,12 @@ export function useCapture() {
           landmarkWindowRef.current
         );
 
+        setState((currentState) => ({
+          ...currentState,
+          motionScore: motionGate.score,
+          motionThreshold: motionGate.threshold,
+        }));
+
         if (isStableClass && isConfident && motionGate.passed) {
           repCounterRef.current.processWindow(result.densityMap, windowStart);
         } else {
@@ -538,8 +546,6 @@ export function useCapture() {
         inferenceInFlightRef.current = true;
 
         const windowTensor = bufferRef.current.getWindow();
-
-        // Correct global window start for sliding 64-frame windows.
         const windowStart = Math.max(0, frameIndex - WINDOW_SIZE);
 
         runStgcn(windowTensor, windowStart);
@@ -608,6 +614,8 @@ export function useCapture() {
       frameSize: null,
       exerciseClass: null,
       classConfidence: 0,
+      motionScore: 0,
+      motionThreshold: 1,
     }));
   }, []);
 
@@ -640,6 +648,8 @@ export function useCapture() {
       frameSize: null,
       exerciseClass: null,
       classConfidence: 0,
+      motionScore: 0,
+      motionThreshold: 1,
     }));
   }, []);
 

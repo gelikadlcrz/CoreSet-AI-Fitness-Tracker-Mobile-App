@@ -1,15 +1,3 @@
-/**
- * CameraView (capture/camera/CameraView.tsx)
- *
- * Main camera screen.
- * Handles:
- * - Camera permission flow
- * - MediaPipe camera setup
- * - Rep overlay
- * - Skeleton overlay
- * - Start / Stop / Reset controls
- */
-
 import React, { useEffect } from 'react';
 import {
   ActivityIndicator,
@@ -108,7 +96,7 @@ export default function CameraView() {
 
       <SafeAreaView pointerEvents="box-none" style={styles.safeArea}>
         <View pointerEvents="none" style={styles.header}>
-          <View>
+          <View style={styles.headerLeft}>
             <Text style={styles.eyebrow}>LIVE CAPTURE</Text>
             <Text style={styles.title}>CoreSet AI</Text>
           </View>
@@ -138,12 +126,14 @@ export default function CameraView() {
           classConfidence={state.classConfidence}
           isRunning={state.isRunning}
           fps={state.fps}
+          motionScore={state.motionScore}
+          motionThreshold={state.motionThreshold}
         />
 
         {!state.isRunning && (
           <View pointerEvents="none" style={styles.instructionCard}>
             <View style={styles.instructionIcon}>
-              <Ionicons name="body-outline" size={20} color={COLORS.accent} />
+              <Ionicons name="body-outline" size={18} color={COLORS.accent} />
             </View>
 
             <View style={styles.instructionCopy}>
@@ -163,7 +153,6 @@ export default function CameraView() {
             onPress={resetReps}
           >
             <Ionicons name="refresh-outline" size={18} color={COLORS.text} />
-
             <Text style={styles.resetButtonText}>Reset</Text>
           </Pressable>
 
@@ -204,7 +193,7 @@ const styles = StyleSheet.create({
 
   cameraShade: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+    backgroundColor: 'rgba(0, 0, 0, 0.10)',
   },
 
   safeArea: {
@@ -272,11 +261,11 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    marginHorizontal: 18,
+    marginHorizontal: 16,
     marginTop: 8,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    borderRadius: 26,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 24,
     backgroundColor: 'rgba(13, 13, 13, 0.72)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.10)',
@@ -285,19 +274,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
 
+  headerLeft: {
+    flexShrink: 1,
+    paddingRight: 12,
+  },
+
   eyebrow: {
     color: COLORS.accent,
     fontSize: 11,
     fontWeight: '900',
-    letterSpacing: 1.6,
+    letterSpacing: 1.8,
+    marginBottom: 2,
   },
 
   title: {
     color: COLORS.text,
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '900',
-    letterSpacing: -0.5,
-    marginTop: 2,
+    letterSpacing: -0.3,
   },
 
   statusPill: {
@@ -342,10 +336,10 @@ const styles = StyleSheet.create({
 
   instructionCard: {
     position: 'absolute',
-    left: 18,
-    right: 18,
-    bottom: 132,
-    borderRadius: 24,
+    left: 16,
+    right: 16,
+    bottom: 128,
+    borderRadius: 22,
     padding: 16,
     backgroundColor: 'rgba(13, 13, 13, 0.78)',
     borderWidth: 1,
@@ -355,9 +349,9 @@ const styles = StyleSheet.create({
   },
 
   instructionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: 'rgba(232, 255, 42, 0.10)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -383,9 +377,9 @@ const styles = StyleSheet.create({
 
   controls: {
     position: 'absolute',
-    bottom: 36,
-    left: 18,
-    right: 18,
+    bottom: 28,
+    left: 16,
+    right: 16,
     flexDirection: 'row',
     gap: 12,
   },
