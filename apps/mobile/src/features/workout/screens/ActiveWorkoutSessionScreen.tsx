@@ -1093,7 +1093,7 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 70,
     paddingHorizontal: 12,
-    paddingBottom: 104,
+    paddingBottom: 12,
   },
   screenLabel: {
     fontSize: 22,

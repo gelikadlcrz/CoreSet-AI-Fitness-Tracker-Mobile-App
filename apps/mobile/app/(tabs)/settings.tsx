@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import {
   Alert,
-  Image,
   LayoutChangeEvent,
   Modal,
   PanResponder,
@@ -10,21 +9,19 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   Vibration,
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../shared/theme';
-import DeleteConfirmationModal from '../../src/features/settings/components/DeleteConfirmationModal';
 
 import {
   DEFAULT_SETTINGS,
   formatRestTime,
   getOrCreateSettings,
   logoutLocalUser,
+  savePreferencesOnly,
   saveSettings,
   signInLocalUser,
   signUpLocalUser,
@@ -38,51 +35,6 @@ type ChoiceConfig = {
   values: string[];
   selected: string;
   onSelect: (value: string) => void;
-};
-
-type ThemePalette = {
-  background: string;
-  surface: string;
-  surfaceSecondary: string;
-  surfaceTertiary: string;
-  text: string;
-  textSecondary: string;
-  textMuted: string;
-  accent: string;
-  border: string;
-  divider: string;
-  input: string;
-  danger: string;
-};
-
-const DARK_THEME: ThemePalette = {
-  background: COLORS.background,
-  surface: COLORS.surface,
-  surfaceSecondary: COLORS.surfaceSecondary,
-  surfaceTertiary: COLORS.surfaceTertiary,
-  text: COLORS.text,
-  textSecondary: COLORS.textSecondary,
-  textMuted: COLORS.textMuted,
-  accent: COLORS.accent,
-  border: COLORS.border,
-  divider: COLORS.divider,
-  input: COLORS.input,
-  danger: COLORS.danger,
-};
-
-const LIGHT_THEME: ThemePalette = {
-  background: '#F4F4EF',
-  surface: '#FFFFFF',
-  surfaceSecondary: '#ECEDE4',
-  surfaceTertiary: '#E2E3D9',
-  text: '#111111',
-  textSecondary: '#4F4F4F',
-  textMuted: '#767676',
-  accent: '#FF6B00',
-  border: '#C9CABC',
-  divider: '#E1E1D8',
-  input: '#F0F1E8',
-  danger: COLORS.danger,
 };
 
 const GOALS = ['General Fitness', 'Hypertrophy', 'Strength', 'Fat Loss', 'Endurance', 'Mobility'];
@@ -99,168 +51,14 @@ function range(start: number, end: number, step = 1) {
   return values;
 }
 
-function decimalRange(start: number, end: number, step = 0.01) {
-  const values: string[] = [];
-  for (let value = start; value <= end + 0.0001; value += step) {
-    values.push(value.toFixed(2));
-  }
-  return values;
-}
-
 function cloneDraft(draft: SettingsDraft): SettingsDraft {
   return JSON.parse(JSON.stringify(draft)) as SettingsDraft;
-}
-
-function kgToLbs(kg: number) {
-  return Math.round(kg * 2.20462);
-}
-
-function lbsToKg(lbs: number) {
-  return Math.round(lbs / 2.20462);
-}
-
-function cmToInches(cm: number) {
-  return Math.round(cm / 2.54);
-}
-
-function inchesToCm(inches: number) {
-  return Math.round(inches * 2.54);
-}
-
-function getWeightLabel(draft: SettingsDraft) {
-  if (draft.preferences.weightUnit === 'lbs') {
-    return `${kgToLbs(draft.bodyStats.weightKg)} lbs`;
-  }
-  return `${draft.bodyStats.weightKg} kg`;
-}
-
-function getWeightChoices(unit: SettingsDraft['preferences']['weightUnit']) {
-  if (unit === 'lbs') {
-    return range(80, 400).map(value => `${value} lbs`);
-  }
-  return range(35, 180).map(value => `${value} kg`);
-}
-
-function parseWeightToKg(value: string) {
-  if (value.endsWith('lbs')) {
-    return lbsToKg(Number(value.replace(' lbs', '')));
-  }
-  return Number(value.replace(' kg', ''));
-}
-
-function getHeightLabel(draft: SettingsDraft) {
-  if (draft.preferences.distanceUnit === 'in') {
-    return `${cmToInches(draft.bodyStats.heightCm)} in`;
-  }
-  return `${(draft.bodyStats.heightCm / 100).toFixed(2)} m`;
-}
-
-function getHeightChoices(unit: SettingsDraft['preferences']['distanceUnit']) {
-  if (unit === 'in') {
-    return range(51, 87).map(value => `${value} in`);
-  }
-  return decimalRange(1.30, 2.20).map(value => `${value} m`);
-}
-
-function parseHeightToCm(value: string) {
-  if (value.endsWith('in')) {
-    return inchesToCm(Number(value.replace(' in', '')));
-  }
-  return Math.round(Number(value.replace(' m', '')) * 100);
 }
 
 function triggerHaptic(enabled: boolean) {
   if (enabled) {
     Vibration.vibrate(8);
   }
-}
-
-function ChoiceModal({
-  config,
-  onClose,
-  theme,
-}: {
-  config: ChoiceConfig | null;
-  onClose: () => void;
-  theme: ThemePalette;
-}) {
-  if (!config) return null;
-
-  return (
-    <Modal transparent visible animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]}> 
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>{config.title}</Text>
-            <TouchableOpacity onPress={onClose} style={[styles.modalClose, { backgroundColor: theme.surfaceSecondary }]}> 
-              <Ionicons name="close" size={20} color={theme.text} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.choiceScroll} showsVerticalScrollIndicator={false}>
-            {config.values.map(value => {
-              const selected = value === config.selected;
-              return (
-                <TouchableOpacity
-                  key={value}
-                  style={[
-                    styles.choiceItem,
-                    { backgroundColor: theme.surfaceSecondary },
-                    selected && { backgroundColor: theme.accent },
-                  ]}
-                  onPress={() => {
-                    config.onSelect(value);
-                    onClose();
-                  }}
-                >
-                  <Text style={[styles.choiceText, { color: theme.text }, selected && styles.choiceTextSelected]}>
-                    {value}
-                  </Text>
-                  {selected && <Ionicons name="checkmark" size={20} color="#000" />}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
-function SaveConfirmationModal({
-  visible,
-  onCancel,
-  onConfirm,
-  theme,
-}: {
-  visible: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-  theme: ThemePalette;
-}) {
-  return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.confirmOverlay}>
-        <View style={[styles.confirmCard, { backgroundColor: theme.surface }]}> 
-          <Ionicons name="save-outline" size={46} color={theme.accent} />
-          <Text style={[styles.confirmTitle, { color: theme.text }]}>Save changes?</Text>
-          <Text style={[styles.confirmMessage, { color: theme.textSecondary }]}> 
-            This will save your profile, body stats, workout defaults, and AI configuration to the local database.
-          </Text>
-
-          <View style={styles.confirmActions}>
-            <TouchableOpacity style={[styles.cancelSaveButton, { backgroundColor: theme.surfaceSecondary }]} onPress={onCancel}>
-              <Text style={[styles.cancelSaveText, { color: theme.text }]}>Cancel</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.confirmSaveButton, { backgroundColor: theme.accent }]} onPress={onConfirm}>
-              <Text style={styles.confirmSaveText}>Save</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
 }
 
 function Section({
@@ -270,12 +68,20 @@ function Section({
 }: {
   title: string;
   children: React.ReactNode;
-  theme: ThemePalette;
+  theme: any;
 }) {
   return (
     <View style={styles.sectionWrap}>
       <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>{title}</Text>
-      <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+          },
+        ]}
+      >
         {children}
       </View>
     </View>
@@ -286,26 +92,35 @@ function Row({
   label,
   value,
   children,
-  noBorder,
   onPress,
+  noBorder,
   theme,
 }: {
   label: string;
   value?: string;
   children?: React.ReactNode;
-  noBorder?: boolean;
   onPress?: () => void;
-  theme: ThemePalette;
+  noBorder?: boolean;
+  theme: any;
 }) {
   const content = (
-    <View style={[styles.row, { borderBottomColor: theme.divider }, noBorder && styles.noBorder]}>
+    <View
+      style={[
+        styles.row,
+        {
+          borderBottomColor: theme.divider,
+        },
+        noBorder && styles.noBorder,
+      ]}
+    >
       <Text style={[styles.rowLabel, { color: theme.text }]}>{label}</Text>
-      {children ? (
-        <View style={styles.rowRight}>{children}</View>
-      ) : (
+
+      {children ?? (
         <View style={styles.rowValueWrap}>
-          <Text style={[styles.rowValue, { color: theme.accent }]}>{value}</Text>
-          {!!onPress && <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />}
+          <Text style={[styles.rowValue, { color: theme.textSecondary }]} numberOfLines={1}>
+            {value}
+          </Text>
+          {!!onPress && <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />}
         </View>
       )}
     </View>
@@ -314,7 +129,7 @@ function Row({
   if (!onPress) return content;
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.82}>
       {content}
     </TouchableOpacity>
   );
@@ -333,24 +148,40 @@ function TogglePill({
   selected: 'left' | 'right';
   onLeftPress: () => void;
   onRightPress: () => void;
-  theme: ThemePalette;
+  theme: any;
 }) {
   return (
-    <View style={[styles.toggleContainer, { backgroundColor: theme.input }]}> 
+    <View style={[styles.toggleWrap, { backgroundColor: theme.input }]}>
       <TouchableOpacity
-        style={[styles.toggleOption, selected === 'left' && { backgroundColor: theme.accent }]}
+        style={[
+          styles.toggleOption,
+          selected === 'left' && { backgroundColor: theme.accent },
+        ]}
         onPress={onLeftPress}
       >
-        <Text style={[styles.toggleText, { color: theme.textMuted }, selected === 'left' && styles.toggleActiveText]}>
+        <Text
+          style={[
+            styles.toggleText,
+            { color: selected === 'left' ? '#000000' : theme.textMuted },
+          ]}
+        >
           {leftLabel}
         </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.toggleOption, selected === 'right' && { backgroundColor: theme.accent }]}
+        style={[
+          styles.toggleOption,
+          selected === 'right' && { backgroundColor: theme.accent },
+        ]}
         onPress={onRightPress}
       >
-        <Text style={[styles.toggleText, { color: theme.textMuted }, selected === 'right' && styles.toggleActiveText]}>
+        <Text
+          style={[
+            styles.toggleText,
+            { color: selected === 'right' ? '#000000' : theme.textMuted },
+          ]}
+        >
           {rightLabel}
         </Text>
       </TouchableOpacity>
@@ -358,106 +189,63 @@ function TogglePill({
   );
 }
 
-function ProfileSummary({
-  draft,
+function ChoiceModal({
+  config,
+  onClose,
   theme,
-  onPickPhoto,
-  onLogout,
 }: {
-  draft: SettingsDraft;
-  theme: ThemePalette;
-  onPickPhoto: () => void;
-  onLogout: () => void;
+  config: ChoiceConfig | null;
+  onClose: () => void;
+  theme: any;
 }) {
+  if (!config) return null;
+
   return (
-    <View style={[styles.profileCard, { borderBottomColor: theme.divider }]}> 
-      <TouchableOpacity style={[styles.avatar, { backgroundColor: theme.surfaceSecondary }]} onPress={onPickPhoto} activeOpacity={0.85}>
-        {draft.profile.photoUri ? (
-          <Image source={{ uri: draft.profile.photoUri }} style={styles.avatarImage} />
-        ) : (
-          <Ionicons name="person-circle-outline" size={62} color={theme.textMuted} />
-        )}
-        <View style={[styles.avatarEditBadge, { backgroundColor: theme.accent }]}> 
-          <Ionicons name="camera" size={13} color="#111111" />
-        </View>
-      </TouchableOpacity>
+    <Modal transparent visible animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>{config.title}</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              style={[styles.modalClose, { backgroundColor: theme.surfaceSecondary }]}
+            >
+              <Ionicons name="close" size={20} color={theme.text} />
+            </TouchableOpacity>
+          </View>
 
-      <View style={styles.profileTextWrap}>
-        <Text style={[styles.profileName, { color: theme.text }]}>{draft.profile.displayName}</Text>
-        <Text style={[styles.profileGoal, { color: theme.accent }]}>{draft.profile.goal} Goal</Text>
-        <Text style={[styles.profileMeta, { color: theme.textSecondary }]}>{draft.profile.level}</Text>
-        <Text style={[styles.profileMeta, { color: theme.textSecondary }]}> 
-          {draft.profile.gender} • {draft.profile.age} yrs old
-        </Text>
-        {!!draft.profile.email && (
-          <Text style={[styles.profileMeta, { color: theme.textSecondary }]} numberOfLines={1}>
-            {draft.profile.email}
-          </Text>
-        )}
+          <ScrollView style={styles.choiceScroll} showsVerticalScrollIndicator={false}>
+            {config.values.map(value => {
+              const selected = value === config.selected;
 
-        <View style={styles.profileButtonRow}>
-          <TouchableOpacity style={[styles.profileMiniButton, { backgroundColor: theme.danger }]} onPress={onLogout}>
-            <Text style={styles.profileLogoutText}>Log Out</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function SignedOutProfile({
-  theme,
-  authEmail,
-  setAuthEmail,
-  authName,
-  setAuthName,
-  onSignIn,
-  onSignUp,
-}: {
-  theme: ThemePalette;
-  authEmail: string;
-  setAuthEmail: (value: string) => void;
-  authName: string;
-  setAuthName: (value: string) => void;
-  onSignIn: () => void;
-  onSignUp: () => void;
-}) {
-  return (
-    <View style={styles.signedOutCard}>
-      <View style={[styles.avatar, { backgroundColor: theme.surfaceSecondary, alignSelf: 'center' }]}> 
-        <Ionicons name="person-circle-outline" size={64} color={theme.textMuted} />
-      </View>
-
-      <Text style={[styles.signedOutTitle, { color: theme.text }]}>No user logged in</Text>
-
-      <TextInput
-        value={authName}
-        onChangeText={setAuthName}
-        placeholder="Display name"
-        placeholderTextColor={theme.textMuted}
-        style={[styles.authInput, { color: theme.text, backgroundColor: theme.input, borderColor: theme.border }]}
-      />
-
-      <TextInput
-        value={authEmail}
-        onChangeText={setAuthEmail}
-        placeholder="Email"
-        placeholderTextColor={theme.textMuted}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        style={[styles.authInput, { color: theme.text, backgroundColor: theme.input, borderColor: theme.border }]}
-      />
-
-      <View style={styles.authActions}>
-        <TouchableOpacity style={[styles.authButton, { backgroundColor: theme.surfaceSecondary }]} onPress={onSignIn}>
-          <Text style={[styles.authButtonText, { color: theme.text }]}>Sign In</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.authButton, { backgroundColor: theme.accent }]} onPress={onSignUp}>
-          <Text style={styles.authButtonPrimaryText}>Sign Up</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+              return (
+                <TouchableOpacity
+                  key={value}
+                  style={[
+                    styles.choiceItem,
+                    { backgroundColor: selected ? theme.accent : theme.surfaceSecondary },
+                  ]}
+                  onPress={() => {
+                    config.onSelect(value);
+                    onClose();
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.choiceText,
+                      { color: selected ? '#000000' : theme.text },
+                    ]}
+                  >
+                    {value}
+                  </Text>
+                  {selected && <Ionicons name="checkmark" size={20} color="#000000" />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -468,9 +256,10 @@ function PercentSlider({
 }: {
   value: number;
   onChange: (value: number) => void;
-  theme: ThemePalette;
+  theme: any;
 }) {
   const [width, setWidth] = useState(0);
+
   const clamp = (next: number) => Math.max(0, Math.min(100, Math.round(next)));
 
   const updateFromX = (x: number) => {
@@ -495,19 +284,28 @@ function PercentSlider({
 
   return (
     <View style={styles.sliderWrap}>
-      <View style={styles.sliderHeader}>
-        <Text style={[styles.sliderName, { color: theme.text }]}>Model Confidence Threshold</Text>
-        <Text style={[styles.sliderPercent, { color: theme.accent }]}>{clamp(value)}%</Text>
-      </View>
-
-      <View style={[styles.sliderTrack, { backgroundColor: theme.border }]} onLayout={onLayout} {...panResponder.panHandlers}>
-        <View style={[styles.sliderFill, { width: `${clamp(value)}%`, backgroundColor: theme.accent }]} />
+      <View
+        style={[styles.sliderTrack, { backgroundColor: theme.border }]}
+        onLayout={onLayout}
+        {...panResponder.panHandlers}
+      >
+        <View
+          style={[
+            styles.sliderFill,
+            {
+              width: `${clamp(value)}%`,
+              backgroundColor: theme.accent,
+            },
+          ]}
+        />
         <View
           style={[
             styles.sliderThumb,
             {
               backgroundColor: theme.accent,
-              left: width ? Math.max(0, Math.min(width - 22, (clamp(value) / 100) * width - 11)) : 0,
+              left: width
+                ? Math.max(0, Math.min(width - 22, (clamp(value) / 100) * width - 11))
+                : 0,
             },
           ]}
         />
@@ -516,15 +314,7 @@ function PercentSlider({
   );
 }
 
-function SettingsContent() {
-  const [draft, setDraft] = useState<SettingsDraft>(DEFAULT_SETTINGS);
-  const [choiceConfig, setChoiceConfig] = useState<ChoiceConfig | null>(null);
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [saveConfirmVisible, setSaveConfirmVisible] = useState(false);
-  const [saveLabel, setSaveLabel] = useState('Save');
-  const [authEmail, setAuthEmail] = useState('');
-  const [authName, setAuthName] = useState('');
-
+export default function SettingsScreen() {
   const {
     settings: globalSettings,
     theme,
@@ -533,12 +323,16 @@ function SettingsContent() {
     applyPreferencesImmediately,
   } = useAppSettings();
 
+  const [draft, setDraft] = useState<SettingsDraft>(globalSettings ?? DEFAULT_SETTINGS);
+  const [choiceConfig, setChoiceConfig] = useState<ChoiceConfig | null>(null);
+  const [saveConfirmVisible, setSaveConfirmVisible] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [saveLabel, setSaveLabel] = useState('Save');
+
   useEffect(() => {
     getOrCreateSettings()
       .then(settings => {
         setDraft(settings);
-        setAuthEmail(settings.profile.email || '');
-        setAuthName(settings.profile.displayName || '');
         setSettingsLocally(settings);
       })
       .catch(error => {
@@ -548,8 +342,6 @@ function SettingsContent() {
 
   useEffect(() => {
     setDraft(globalSettings);
-    setAuthEmail(globalSettings.profile.email || '');
-    setAuthName(globalSettings.profile.displayName || '');
   }, [globalSettings]);
 
   const updateDraft = (updater: (next: SettingsDraft) => void) => {
@@ -565,18 +357,18 @@ function SettingsContent() {
       const next = cloneDraft(current);
       updater(next);
       triggerHaptic(next.preferences.hapticsEnabled);
-      applyPreferencesImmediately(next.preferences).catch(error => console.log('Immediate preference save error', error));
+
+      applyPreferencesImmediately(next.preferences).catch(error => {
+        console.log('Immediate preference save error', error);
+      });
+
       return next;
     });
   };
 
   const pickProfilePhoto = async () => {
     try {
-      // Load ImagePicker only when the user taps the avatar. This prevents the
-      // whole Settings tab from crashing when the native module is not present
-      // in an older development build.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const ImagePicker = require('expo-image-picker');
+      const ImagePicker = await import('expo-image-picker');
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions?.Images ?? 'images',
@@ -586,38 +378,43 @@ function SettingsContent() {
       });
 
       if (!result.canceled && result.assets?.[0]?.uri) {
-        const selectedUri = result.assets[0].uri;
         updateDraft(next => {
-          next.profile.photoUri = selectedUri;
+          next.profile.photoUri = result.assets[0].uri;
         });
       }
     } catch (error) {
       console.log('Profile photo picker error', error);
       Alert.alert(
         'Photo picker unavailable',
-        'CoreSet could not open the photo picker. Rebuild the development app after installing expo-image-picker, then try again.',
+        'CoreSet could not open the photo picker. Rebuild the development app after installing expo-image-picker.',
       );
     }
   };
 
   const handleSignIn = async () => {
-    const next = await signInLocalUser({ email: authEmail, displayName: authName });
+    const next = await signInLocalUser({
+      email: draft.profile.email || 'demo@coreset.local',
+      displayName: draft.profile.displayName || 'Demo User',
+    });
+
     setDraft(next);
     setSettingsLocally(next);
     await refreshSettings();
-    triggerHaptic(next.preferences.hapticsEnabled);
   };
 
   const handleSignUp = async () => {
-    const next = await signUpLocalUser({ email: authEmail, displayName: authName });
+    const next = await signUpLocalUser({
+      email: draft.profile.email || 'demo@coreset.local',
+      displayName: draft.profile.displayName || 'Demo User',
+    });
+
     setDraft(next);
     setSettingsLocally(next);
     await refreshSettings();
-    triggerHaptic(next.preferences.hapticsEnabled);
   };
 
   const handleLogout = () => {
-    Alert.alert('Log out?', 'This will switch the Settings screen back to the signed-out state.', [
+    Alert.alert('Log out?', 'This will return Settings to the signed-out state.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Log Out',
@@ -649,6 +446,8 @@ function SettingsContent() {
     }
   };
 
+  const displayDistance = draft.preferences.distanceUnit === 'in' ? 'in' : 'm';
+
   return (
     <>
       <ScrollView
@@ -659,7 +458,10 @@ function SettingsContent() {
         <View style={styles.header}>
           <Text style={[styles.title, { color: theme.text }]}>Settings</Text>
 
-          <TouchableOpacity style={[styles.saveButton, { backgroundColor: theme.accent }]} onPress={() => setSaveConfirmVisible(true)}>
+          <TouchableOpacity
+            style={[styles.saveButton, { backgroundColor: theme.accent }]}
+            onPress={() => setSaveConfirmVisible(true)}
+          >
             <Text style={styles.saveText}>{saveLabel}</Text>
           </TouchableOpacity>
         </View>
@@ -667,103 +469,149 @@ function SettingsContent() {
         <Section title="User Profile" theme={theme}>
           {draft.profile.isLoggedIn ? (
             <>
-              <ProfileSummary draft={draft} theme={theme} onPickPhoto={pickProfilePhoto} onLogout={handleLogout} />
+              <View style={[styles.profileCard, { borderBottomColor: theme.divider }]}>
+                <TouchableOpacity
+                  style={[styles.avatar, { backgroundColor: theme.surfaceSecondary }]}
+                  onPress={pickProfilePhoto}
+                >
+                  <Ionicons name="person" size={40} color={theme.textMuted} />
+                  <View style={[styles.avatarBadge, { backgroundColor: theme.accent }]}>
+                    <Ionicons name="camera" size={13} color="#000000" />
+                  </View>
+                </TouchableOpacity>
 
-              <Row
-                label="Goal"
-                value={draft.profile.goal}
-                theme={theme}
-                onPress={() =>
-                  setChoiceConfig({
-                    title: 'Choose Goal',
-                    values: GOALS,
-                    selected: draft.profile.goal,
-                    onSelect: value => updateDraft(next => { next.profile.goal = value; }),
-                  })
-                }
-              />
+                <View style={styles.profileTextWrap}>
+                  <Text style={[styles.profileName, { color: theme.text }]}>
+                    {draft.profile.displayName || 'Demo User'}
+                  </Text>
+                  <Text style={[styles.profileGoal, { color: theme.accent }]}>
+                    {draft.profile.goal} Goal
+                  </Text>
+                  <Text style={[styles.profileMeta, { color: theme.textSecondary }]}>
+                    {draft.profile.level}
+                  </Text>
+                  <Text style={[styles.profileMeta, { color: theme.textSecondary }]}>
+                    {draft.profile.gender} • {draft.profile.age} yrs old
+                  </Text>
+                </View>
+              </View>
 
-              <Row
-                label="Training Level"
-                value={draft.profile.level}
-                theme={theme}
-                onPress={() =>
-                  setChoiceConfig({
-                    title: 'Choose Level',
-                    values: LEVELS,
-                    selected: draft.profile.level,
-                    onSelect: value => updateDraft(next => { next.profile.level = value; }),
-                  })
-                }
-              />
-
-              <Row
-                label="Gender"
-                value={draft.profile.gender}
-                theme={theme}
-                onPress={() =>
-                  setChoiceConfig({
-                    title: 'Choose Gender',
-                    values: GENDERS,
-                    selected: draft.profile.gender,
-                    onSelect: value => updateDraft(next => { next.profile.gender = value; }),
-                  })
-                }
-              />
-
-              <Row
-                label="Age"
-                value={`${draft.profile.age}`}
-                noBorder
-                theme={theme}
-                onPress={() =>
-                  setChoiceConfig({
-                    title: 'Choose Age',
-                    values: range(13, 80),
-                    selected: String(draft.profile.age),
-                    onSelect: value => updateDraft(next => { next.profile.age = Number(value); }),
-                  })
-                }
-              />
+              <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+                <Text style={[styles.logoutText, { color: theme.danger }]}>Log Out</Text>
+              </TouchableOpacity>
             </>
           ) : (
-            <SignedOutProfile
-              theme={theme}
-              authEmail={authEmail}
-              setAuthEmail={setAuthEmail}
-              authName={authName}
-              setAuthName={setAuthName}
-              onSignIn={handleSignIn}
-              onSignUp={handleSignUp}
-            />
+            <View style={styles.signedOutCard}>
+              <View style={[styles.avatarLarge, { backgroundColor: theme.surfaceSecondary }]}>
+                <Ionicons name="person" size={44} color={theme.textMuted} />
+              </View>
+
+              <Text style={[styles.signedOutTitle, { color: theme.text }]}>No user signed in</Text>
+              <Text style={[styles.signedOutText, { color: theme.textMuted }]}>
+                Continue locally or use a demo account for testing.
+              </Text>
+
+              <View style={styles.authRow}>
+                <TouchableOpacity
+                  style={[styles.authButton, { backgroundColor: theme.accent }]}
+                  onPress={handleSignIn}
+                >
+                  <Text style={styles.authButtonText}>Sign In</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.authButtonSecondary, { borderColor: theme.border }]}
+                  onPress={handleSignUp}
+                >
+                  <Text style={[styles.authButtonSecondaryText, { color: theme.text }]}>Sign Up</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           )}
+
+          <Row
+            label="Goal"
+            value={draft.profile.goal}
+            theme={theme}
+            onPress={() =>
+              setChoiceConfig({
+                title: 'Choose Goal',
+                values: GOALS,
+                selected: draft.profile.goal,
+                onSelect: value => updateDraft(next => { next.profile.goal = value; }),
+              })
+            }
+          />
+
+          <Row
+            label="Training Level"
+            value={draft.profile.level}
+            theme={theme}
+            onPress={() =>
+              setChoiceConfig({
+                title: 'Choose Level',
+                values: LEVELS,
+                selected: draft.profile.level,
+                onSelect: value => updateDraft(next => { next.profile.level = value; }),
+              })
+            }
+          />
+
+          <Row
+            label="Gender"
+            value={draft.profile.gender}
+            theme={theme}
+            onPress={() =>
+              setChoiceConfig({
+                title: 'Choose Gender',
+                values: GENDERS,
+                selected: draft.profile.gender,
+                onSelect: value => updateDraft(next => { next.profile.gender = value; }),
+              })
+            }
+          />
+
+          <Row
+            label="Age"
+            value={`${draft.profile.age}`}
+            theme={theme}
+            noBorder
+            onPress={() =>
+              setChoiceConfig({
+                title: 'Choose Age',
+                values: range(13, 80),
+                selected: String(draft.profile.age),
+                onSelect: value => updateDraft(next => { next.profile.age = Number(value); }),
+              })
+            }
+          />
         </Section>
 
         <Section title="Body Stats" theme={theme}>
           <Row
             label="Weight"
-            value={getWeightLabel(draft)}
+            value={`${draft.bodyStats.weightKg} kg`}
             theme={theme}
             onPress={() =>
               setChoiceConfig({
                 title: 'Choose Weight',
-                values: getWeightChoices(draft.preferences.weightUnit),
-                selected: getWeightLabel(draft),
-                onSelect: value => updateDraft(next => { next.bodyStats.weightKg = parseWeightToKg(value); }),
+                values: range(35, 180).map(value => `${value} kg`),
+                selected: `${draft.bodyStats.weightKg} kg`,
+                onSelect: value => updateDraft(next => { next.bodyStats.weightKg = Number(value.replace(' kg', '')); }),
               })
             }
           />
 
           <Row
             label="Height"
-            value={getHeightLabel(draft)}
+            value={`${draft.bodyStats.heightCm} cm`}
             theme={theme}
             onPress={() =>
               setChoiceConfig({
                 title: 'Choose Height',
-                values: getHeightChoices(draft.preferences.distanceUnit),
-                selected: getHeightLabel(draft),
-                onSelect: value => updateDraft(next => { next.bodyStats.heightCm = parseHeightToCm(value); }),
+                values: range(130, 220).map(value => `${value} cm`),
+                selected: `${draft.bodyStats.heightCm} cm`,
+                onSelect: value => updateDraft(next => { next.bodyStats.heightCm = Number(value.replace(' cm', '')); }),
               })
             }
           />
@@ -785,8 +633,8 @@ function SettingsContent() {
           <Row
             label="Body Type"
             value={draft.bodyStats.bodyType}
-            noBorder
             theme={theme}
+            noBorder
             onPress={() =>
               setChoiceConfig({
                 title: 'Choose Body Type',
@@ -804,9 +652,9 @@ function SettingsContent() {
               leftLabel="kg"
               rightLabel="lbs"
               selected={draft.preferences.weightUnit === 'kg' ? 'left' : 'right'}
-              theme={theme}
               onLeftPress={() => updatePreferenceImmediately(next => { next.preferences.weightUnit = 'kg'; })}
               onRightPress={() => updatePreferenceImmediately(next => { next.preferences.weightUnit = 'lbs'; })}
+              theme={theme}
             />
           </Row>
 
@@ -814,10 +662,10 @@ function SettingsContent() {
             <TogglePill
               leftLabel="m"
               rightLabel="in"
-              selected={draft.preferences.distanceUnit === 'm' ? 'left' : 'right'}
-              theme={theme}
+              selected={displayDistance === 'm' ? 'left' : 'right'}
               onLeftPress={() => updatePreferenceImmediately(next => { next.preferences.distanceUnit = 'm'; })}
               onRightPress={() => updatePreferenceImmediately(next => { next.preferences.distanceUnit = 'in'; })}
+              theme={theme}
             />
           </Row>
 
@@ -826,9 +674,9 @@ function SettingsContent() {
               leftLabel="Dark"
               rightLabel="Light"
               selected={draft.preferences.theme === 'dark' ? 'left' : 'right'}
-              theme={theme}
               onLeftPress={() => updatePreferenceImmediately(next => { next.preferences.theme = 'dark'; })}
               onRightPress={() => updatePreferenceImmediately(next => { next.preferences.theme = 'light'; })}
+              theme={theme}
             />
           </Row>
 
@@ -837,108 +685,77 @@ function SettingsContent() {
               leftLabel="On"
               rightLabel="Off"
               selected={draft.preferences.soundEnabled ? 'left' : 'right'}
-              theme={theme}
               onLeftPress={() => updatePreferenceImmediately(next => { next.preferences.soundEnabled = true; })}
               onRightPress={() => updatePreferenceImmediately(next => { next.preferences.soundEnabled = false; })}
+              theme={theme}
             />
           </Row>
 
-          <Row label="Haptics" noBorder theme={theme}>
+          <Row label="Haptics" theme={theme} noBorder>
             <TogglePill
               leftLabel="On"
               rightLabel="Off"
               selected={draft.preferences.hapticsEnabled ? 'left' : 'right'}
-              theme={theme}
               onLeftPress={() => updatePreferenceImmediately(next => { next.preferences.hapticsEnabled = true; })}
               onRightPress={() => updatePreferenceImmediately(next => { next.preferences.hapticsEnabled = false; })}
+              theme={theme}
             />
           </Row>
         </Section>
 
         <Section title="Workout Defaults" theme={theme}>
-          <Row
-            label="Global Default Rest Interval"
-            value={formatRestTime(draft.workoutDefaults.defaultRestSeconds)}
-            theme={theme}
-            onPress={() =>
-              setChoiceConfig({
-                title: 'Choose Default Rest',
-                values: REST_OPTIONS.map(formatRestTime),
-                selected: formatRestTime(draft.workoutDefaults.defaultRestSeconds),
-                onSelect: value => updateDraft(next => { next.workoutDefaults.defaultRestSeconds = REST_OPTIONS.find(seconds => formatRestTime(seconds) === value) || 90; }),
-              })
-            }
-          />
-
-          <Row
-            label="Warm-up Set Rest"
-            value={formatRestTime(draft.workoutDefaults.warmupRestSeconds)}
-            theme={theme}
-            onPress={() =>
-              setChoiceConfig({
-                title: 'Choose Warm-up Rest',
-                values: REST_OPTIONS.map(formatRestTime),
-                selected: formatRestTime(draft.workoutDefaults.warmupRestSeconds),
-                onSelect: value => updateDraft(next => { next.workoutDefaults.warmupRestSeconds = REST_OPTIONS.find(seconds => formatRestTime(seconds) === value) || 90; }),
-              })
-            }
-          />
-
-          <Row
-            label="Working Set Rest"
-            value={formatRestTime(draft.workoutDefaults.workingRestSeconds)}
-            theme={theme}
-            onPress={() =>
-              setChoiceConfig({
-                title: 'Choose Working Rest',
-                values: REST_OPTIONS.map(formatRestTime),
-                selected: formatRestTime(draft.workoutDefaults.workingRestSeconds),
-                onSelect: value => updateDraft(next => { next.workoutDefaults.workingRestSeconds = REST_OPTIONS.find(seconds => formatRestTime(seconds) === value) || 180; }),
-              })
-            }
-          />
-
-          <Row
-            label="Drop Set Rest"
-            value={formatRestTime(draft.workoutDefaults.dropRestSeconds)}
-            theme={theme}
-            onPress={() =>
-              setChoiceConfig({
-                title: 'Choose Drop Set Rest',
-                values: REST_OPTIONS.map(formatRestTime),
-                selected: formatRestTime(draft.workoutDefaults.dropRestSeconds),
-                onSelect: value => updateDraft(next => { next.workoutDefaults.dropRestSeconds = REST_OPTIONS.find(seconds => formatRestTime(seconds) === value) || 90; }),
-              })
-            }
-          />
-
-          <Row
-            label="Failure Set Rest"
-            value={formatRestTime(draft.workoutDefaults.failureRestSeconds)}
-            noBorder
-            theme={theme}
-            onPress={() =>
-              setChoiceConfig({
-                title: 'Choose Failure Rest',
-                values: REST_OPTIONS.map(formatRestTime),
-                selected: formatRestTime(draft.workoutDefaults.failureRestSeconds),
-                onSelect: value => updateDraft(next => { next.workoutDefaults.failureRestSeconds = REST_OPTIONS.find(seconds => formatRestTime(seconds) === value) || 180; }),
-              })
-            }
-          />
+          {[
+            ['Global Default Rest Interval', 'defaultRestSeconds'],
+            ['Warm-up Set Rest', 'warmupRestSeconds'],
+            ['Working Set Rest', 'workingRestSeconds'],
+            ['Drop Set Rest', 'dropRestSeconds'],
+            ['Failure Set Rest', 'failureRestSeconds'],
+          ].map(([label, key], index, list) => (
+            <Row
+              key={key}
+              label={label}
+              value={formatRestTime(draft.workoutDefaults[key as keyof SettingsDraft['workoutDefaults']])}
+              theme={theme}
+              noBorder={index === list.length - 1}
+              onPress={() =>
+                setChoiceConfig({
+                  title: label,
+                  values: REST_OPTIONS.map(seconds => formatRestTime(seconds)),
+                  selected: formatRestTime(draft.workoutDefaults[key as keyof SettingsDraft['workoutDefaults']]),
+                  onSelect: value => {
+                    const [minutes, seconds] = value.split(':').map(Number);
+                    updateDraft(next => {
+                      next.workoutDefaults[key as keyof SettingsDraft['workoutDefaults']] =
+                        minutes * 60 + seconds;
+                    });
+                  },
+                })
+              }
+            />
+          ))}
         </Section>
 
         <Section title="AI Configuration" theme={theme}>
+          <View style={styles.aiHeaderRow}>
+            <Text style={[styles.sliderLabel, { color: theme.text }]}>Model Confidence Threshold</Text>
+            <Text style={[styles.aiValue, { backgroundColor: theme.accent }]}>
+              {draft.ai.confidenceThreshold}%
+            </Text>
+          </View>
+
           <PercentSlider
             value={draft.ai.confidenceThreshold}
-            theme={theme}
             onChange={value => updateDraft(next => { next.ai.confidenceThreshold = value; })}
+            theme={theme}
           />
         </Section>
 
         <Section title="Data Management" theme={theme}>
-          <TouchableOpacity style={styles.deleteButton} onPress={() => setDeleteModalVisible(true)}>
-            <Text style={styles.deleteText}>DELETE ALL LOCAL DATA</Text>
+          <TouchableOpacity
+            style={[styles.deleteButton, { borderColor: theme.danger }]}
+            onPress={() => setDeleteConfirmVisible(true)}
+          >
+            <Text style={[styles.deleteText, { color: theme.danger }]}>DELETE ALL LOCAL DATA</Text>
           </TouchableOpacity>
 
           <Text style={[styles.warningText, { color: theme.textMuted }]}>This action cannot be undone</Text>
@@ -947,59 +764,51 @@ function SettingsContent() {
 
       <ChoiceModal config={choiceConfig} onClose={() => setChoiceConfig(null)} theme={theme} />
 
-      <SaveConfirmationModal
-        visible={saveConfirmVisible}
-        onCancel={() => setSaveConfirmVisible(false)}
-        onConfirm={confirmSave}
-        theme={theme}
-      />
+      <Modal transparent visible={saveConfirmVisible} animationType="fade">
+        <Pressable style={styles.confirmOverlay} onPress={() => setSaveConfirmVisible(false)}>
+          <Pressable style={[styles.confirmCard, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.confirmTitle, { color: theme.text }]}>Save settings?</Text>
+            <Text style={[styles.confirmMessage, { color: theme.textMuted }]}>
+              This will save your profile, body stats, workout defaults, and AI configuration locally.
+            </Text>
 
-      <DeleteConfirmationModal
-        visible={deleteModalVisible}
-        onClose={() => setDeleteModalVisible(false)}
-        onConfirm={() => {
-          setDeleteModalVisible(false);
-          Alert.alert('Local data reset', 'The delete action is ready to be connected to the database reset service.');
-        }}
-      />
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={[styles.confirmButtonSecondary, { borderColor: theme.border }]}
+                onPress={() => setSaveConfirmVisible(false)}
+              >
+                <Text style={[styles.confirmButtonSecondaryText, { color: theme.text }]}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.confirmButtonPrimary, { backgroundColor: theme.accent }]}
+                onPress={confirmSave}
+              >
+                <Text style={styles.confirmButtonPrimaryText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal transparent visible={deleteConfirmVisible} animationType="fade">
+        <Pressable style={styles.confirmOverlay} onPress={() => setDeleteConfirmVisible(false)}>
+          <Pressable style={[styles.confirmCard, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.confirmTitle, { color: theme.text }]}>Delete local data?</Text>
+            <Text style={[styles.confirmMessage, { color: theme.textMuted }]}>
+              This action is not fully connected yet. Keep this option disabled until the database reset service is finalized.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.confirmButtonSecondary, { borderColor: theme.border, marginTop: 16 }]}
+              onPress={() => setDeleteConfirmVisible(false)}
+            >
+              <Text style={[styles.confirmButtonSecondaryText, { color: theme.text }]}>Close</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
-  );
-}
-
-class SettingsErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { errorMessage: string | null }
-> {
-  state = { errorMessage: null };
-
-  static getDerivedStateFromError(error: Error) {
-    return { errorMessage: error?.message || 'Settings failed to load.' };
-  }
-
-  componentDidCatch(error: Error) {
-    console.log('Settings screen render error', error);
-  }
-
-  render() {
-    if (this.state.errorMessage) {
-      return (
-        <View style={styles.errorRoot}>
-          <Ionicons name="warning-outline" size={42} color={COLORS.danger} />
-          <Text style={styles.errorTitle}>Settings could not open</Text>
-          <Text style={styles.errorMessage}>{this.state.errorMessage}</Text>
-        </View>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-export default function SettingsScreen() {
-  return (
-    <SettingsErrorBoundary>
-      <SettingsContent />
-    </SettingsErrorBoundary>
   );
 }
 
@@ -1007,47 +816,25 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
-  errorRoot: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  errorTitle: {
-    color: COLORS.text,
-    fontSize: 20,
-    fontWeight: '900',
-    marginTop: 14,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  errorMessage: {
-    color: COLORS.textMuted,
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
   content: {
     paddingTop: 70,
-    paddingHorizontal: 20,
-    paddingBottom: 92,
+    paddingHorizontal: 18,
+    paddingBottom: 94,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 22,
+    marginBottom: 20,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '900',
   },
   saveButton: {
-    backgroundColor: COLORS.accent,
     borderRadius: 999,
-    paddingHorizontal: 22,
-    paddingVertical: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 9,
   },
   saveText: {
     color: '#000000',
@@ -1055,21 +842,21 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   sectionWrap: {
-    marginBottom: 24,
+    marginBottom: 22,
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
-    marginBottom: 10,
+    marginBottom: 9,
   },
   sectionCard: {
-    borderRadius: 24,
+    borderRadius: 22,
     borderWidth: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 15,
     paddingVertical: 4,
   },
   row: {
-    minHeight: 56,
+    minHeight: 54,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1084,154 +871,158 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     paddingRight: 12,
   },
-  rowRight: {
-    alignItems: 'flex-end',
-  },
   rowValueWrap: {
+    maxWidth: '52%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
   rowValue: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
+  },
+  toggleWrap: {
+    width: 116,
+    height: 34,
+    borderRadius: 999,
+    flexDirection: 'row',
+    padding: 3,
+  },
+  toggleOption: {
+    flex: 1,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleText: {
+    fontSize: 12,
+    fontWeight: '900',
   },
   profileCard: {
     flexDirection: 'row',
-    paddingVertical: 16,
+    paddingVertical: 15,
     borderBottomWidth: 1,
   },
   avatar: {
     width: 76,
     height: 76,
     borderRadius: 38,
+    marginRight: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarEditBadge: {
+  avatarBadge: {
     position: 'absolute',
-    right: 3,
-    bottom: 3,
+    right: 2,
+    bottom: 2,
     width: 24,
     height: 24,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+  },
+  avatarLarge: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginTop: 14,
   },
   profileTextWrap: {
     flex: 1,
-    marginLeft: 14,
   },
   profileName: {
-    fontSize: 20,
+    fontSize: 21,
     fontWeight: '900',
   },
   profileGoal: {
-    marginTop: 2,
-    fontSize: 15,
+    marginTop: 4,
     fontWeight: '800',
+    fontSize: 15,
   },
   profileMeta: {
-    marginTop: 2,
-    fontSize: 14,
+    marginTop: 3,
+    fontSize: 13,
   },
-  profileButtonRow: {
-    flexDirection: 'row',
-    marginTop: 10,
-    gap: 8,
+  logoutButton: {
+    minHeight: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  profileMiniButton: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  profileMiniText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  profileLogoutText: {
-    color: '#FFFFFF',
-    fontSize: 12,
+  logoutText: {
+    fontSize: 15,
     fontWeight: '900',
   },
   signedOutCard: {
-    paddingVertical: 18,
+    paddingVertical: 8,
   },
   signedOutTitle: {
-    marginTop: 12,
-    fontSize: 19,
-    fontWeight: '900',
     textAlign: 'center',
-  },
-  authInput: {
+    fontSize: 20,
+    fontWeight: '900',
     marginTop: 12,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
   },
-  authActions: {
+  signedOutText: {
+    textAlign: 'center',
+    fontSize: 14,
+    marginTop: 6,
+    lineHeight: 20,
+  },
+  authRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 14,
+    marginTop: 16,
+    marginBottom: 4,
   },
   authButton: {
     flex: 1,
-    borderRadius: 14,
-    paddingVertical: 12,
+    minHeight: 44,
+    borderRadius: 999,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   authButtonText: {
-    fontWeight: '900',
-  },
-  authButtonPrimaryText: {
     color: '#000000',
-    fontWeight: '900',
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    borderRadius: 999,
-    padding: 4,
-    gap: 4,
-  },
-  toggleOption: {
-    minWidth: 58,
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-  },
-  toggleText: {
-    fontWeight: '800',
     fontSize: 14,
+    fontWeight: '900',
   },
-  toggleActiveText: {
-    color: '#000000',
+  authButtonSecondary: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sliderWrap: {
-    paddingVertical: 18,
+  authButtonSecondaryText: {
+    fontSize: 14,
+    fontWeight: '900',
   },
-  sliderHeader: {
+  aiHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginVertical: 14,
   },
-  sliderName: {
+  sliderLabel: {
     fontSize: 15,
     fontWeight: '800',
+    flex: 1,
+    paddingRight: 12,
   },
-  sliderPercent: {
-    fontSize: 15,
+  aiValue: {
+    color: '#000000',
+    overflow: 'hidden',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     fontWeight: '900',
+  },
+  sliderWrap: {
+    paddingTop: 16,
+    paddingBottom: 20,
   },
   sliderTrack: {
     height: 8,
@@ -1244,46 +1035,49 @@ const styles = StyleSheet.create({
   },
   sliderThumb: {
     position: 'absolute',
+    top: -7,
     width: 22,
     height: 22,
     borderRadius: 11,
   },
   deleteButton: {
-    marginTop: 14,
-    backgroundColor: COLORS.danger,
+    borderWidth: 1.5,
     borderRadius: 16,
-    paddingVertical: 16,
+    paddingVertical: 15,
     alignItems: 'center',
+    marginTop: 14,
   },
   deleteText: {
-    color: '#FFFFFF',
-    fontSize: 15,
     fontWeight: '900',
+    fontSize: 14,
   },
   warningText: {
+    marginTop: 12,
+    marginBottom: 12,
     textAlign: 'center',
-    marginTop: 10,
-    marginBottom: 14,
+    fontSize: 13,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    justifyContent: 'flex-end',
   },
   modalCard: {
     maxHeight: '72%',
-    borderRadius: 24,
-    padding: 18,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 32,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 19,
+    fontSize: 22,
     fontWeight: '900',
   },
   modalClose: {
@@ -1297,9 +1091,9 @@ const styles = StyleSheet.create({
     maxHeight: 420,
   },
   choiceItem: {
-    minHeight: 48,
-    borderRadius: 14,
-    paddingHorizontal: 14,
+    minHeight: 52,
+    paddingHorizontal: 16,
+    borderRadius: 16,
     marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1307,59 +1101,54 @@ const styles = StyleSheet.create({
   },
   choiceText: {
     fontSize: 16,
-    fontWeight: '700',
-  },
-  choiceTextSelected: {
-    color: '#000000',
-    fontWeight: '900',
+    fontWeight: '800',
   },
   confirmOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
   confirmCard: {
-    width: '100%',
     borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
+    padding: 20,
   },
   confirmTitle: {
-    marginTop: 12,
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: '900',
   },
   confirmMessage: {
     marginTop: 8,
-    textAlign: 'center',
-    lineHeight: 22,
-    fontSize: 15,
+    fontSize: 14,
+    lineHeight: 20,
   },
   confirmActions: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 22,
+    gap: 10,
+    marginTop: 18,
   },
-  cancelSaveButton: {
+  confirmButtonSecondary: {
     flex: 1,
-    borderRadius: 14,
-    paddingVertical: 13,
+    minHeight: 44,
+    borderRadius: 999,
+    borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  cancelSaveText: {
+  confirmButtonSecondaryText: {
+    fontSize: 14,
     fontWeight: '900',
   },
-  confirmSaveButton: {
+  confirmButtonPrimary: {
     flex: 1,
-    backgroundColor: COLORS.accent,
-    borderRadius: 14,
-    paddingVertical: 13,
+    minHeight: 44,
+    borderRadius: 999,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  confirmSaveText: {
+  confirmButtonPrimaryText: {
     color: '#000000',
+    fontSize: 14,
     fontWeight: '900',
   },
 });
