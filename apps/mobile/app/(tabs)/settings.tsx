@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import {
   Alert,
+  Image,
   LayoutChangeEvent,
   Modal,
   PanResponder,
@@ -21,7 +23,6 @@ import {
   formatRestTime,
   getOrCreateSettings,
   logoutLocalUser,
-  savePreferencesOnly,
   saveSettings,
   signInLocalUser,
   signUpLocalUser,
@@ -37,7 +38,15 @@ type ChoiceConfig = {
   onSelect: (value: string) => void;
 };
 
-const GOALS = ['General Fitness', 'Hypertrophy', 'Strength', 'Fat Loss', 'Endurance', 'Mobility'];
+const GOALS = [
+  'General Fitness',
+  'Hypertrophy',
+  'Strength',
+  'Fat Loss',
+  'Endurance',
+  'Mobility',
+];
+
 const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
 const GENDERS = ['Male', 'Female', 'Prefer not to say'];
 const BODY_TYPES = ['Ectomorph', 'Mesomorph', 'Endomorph', 'Balanced'];
@@ -45,9 +54,11 @@ const REST_OPTIONS = [30, 45, 60, 75, 90, 120, 150, 180, 210, 240, 300];
 
 function range(start: number, end: number, step = 1) {
   const values: string[] = [];
+
   for (let value = start; value <= end; value += step) {
     values.push(String(value));
   }
+
   return values;
 }
 
@@ -61,18 +72,88 @@ function triggerHaptic(enabled: boolean) {
   }
 }
 
+function toShortDistanceUnit(value: string) {
+  return value === 'in' || value === 'inches' ? 'in' : 'm';
+}
+
+function kgToLb(kg: number) {
+  return Math.round(kg * 2.20462);
+}
+
+function lbToKg(lb: number) {
+  return Math.round((lb / 2.20462) * 10) / 10;
+}
+
+function cmToMeters(cm: number) {
+  return Math.round((cm / 100) * 100) / 100;
+}
+
+function metersToCm(meters: number) {
+  return Math.round(meters * 100);
+}
+
+function cmToInches(cm: number) {
+  return Math.round(cm / 2.54);
+}
+
+function inchesToCm(inches: number) {
+  return Math.round(inches * 2.54);
+}
+
+function formatWeightForUnit(weightKg: number, unit: string) {
+  if (unit === 'lbs') {
+    return `${kgToLb(weightKg)} lbs`;
+  }
+
+  return `${Math.round(weightKg)} kg`;
+}
+
+function formatHeightForUnit(heightCm: number, unit: string) {
+  const shortUnit = toShortDistanceUnit(unit);
+
+  if (shortUnit === 'in') {
+    return `${cmToInches(heightCm)} in`;
+  }
+
+  return `${cmToMeters(heightCm).toFixed(2)} m`;
+}
+
+function weightChoiceValues(unit: string) {
+  if (unit === 'lbs') {
+    return range(80, 400).map(value => `${value} lbs`);
+  }
+
+  return range(35, 180).map(value => `${value} kg`);
+}
+
+function heightChoiceValues(unit: string) {
+  const shortUnit = toShortDistanceUnit(unit);
+
+  if (shortUnit === 'in') {
+    return range(51, 87).map(value => `${value} in`);
+  }
+
+  const values: string[] = [];
+  for (let value = 130; value <= 220; value += 1) {
+    values.push(`${(value / 100).toFixed(2)} m`);
+  }
+  return values;
+}
+
 function Section({
   title,
   children,
   theme,
 }: {
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
   theme: any;
 }) {
   return (
     <View style={styles.sectionWrap}>
-      <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>{title}</Text>
+      <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>
+        {title}
+      </Text>
       <View
         style={[
           styles.sectionCard,
@@ -98,7 +179,7 @@ function Row({
 }: {
   label: string;
   value?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
   onPress?: () => void;
   noBorder?: boolean;
   theme: any;
@@ -117,16 +198,23 @@ function Row({
 
       {children ?? (
         <View style={styles.rowValueWrap}>
-          <Text style={[styles.rowValue, { color: theme.textSecondary }]} numberOfLines={1}>
+          <Text
+            style={[styles.rowValue, { color: theme.textSecondary }]}
+            numberOfLines={1}
+          >
             {value}
           </Text>
-          {!!onPress && <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />}
+          {!!onPress && (
+            <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+          )}
         </View>
       )}
     </View>
   );
 
-  if (!onPress) return content;
+  if (!onPress) {
+    return content;
+  }
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.82}>
@@ -158,6 +246,7 @@ function TogglePill({
           selected === 'left' && { backgroundColor: theme.accent },
         ]}
         onPress={onLeftPress}
+        activeOpacity={0.86}
       >
         <Text
           style={[
@@ -175,6 +264,7 @@ function TogglePill({
           selected === 'right' && { backgroundColor: theme.accent },
         ]}
         onPress={onRightPress}
+        activeOpacity={0.86}
       >
         <Text
           style={[
@@ -198,17 +288,22 @@ function ChoiceModal({
   onClose: () => void;
   theme: any;
 }) {
-  if (!config) return null;
+  if (!config) {
+    return null;
+  }
 
   return (
     <Modal transparent visible animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]}>
           <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>{config.title}</Text>
+            <Text style={[styles.modalTitle, { color: theme.text }]}> 
+              {config.title}
+            </Text>
             <TouchableOpacity
               onPress={onClose}
               style={[styles.modalClose, { backgroundColor: theme.surfaceSecondary }]}
+              activeOpacity={0.84}
             >
               <Ionicons name="close" size={20} color={theme.text} />
             </TouchableOpacity>
@@ -229,6 +324,7 @@ function ChoiceModal({
                     config.onSelect(value);
                     onClose();
                   }}
+                  activeOpacity={0.86}
                 >
                   <Text
                     style={[
@@ -259,12 +355,25 @@ function PercentSlider({
   theme: any;
 }) {
   const [width, setWidth] = useState(0);
+  const [trackX, setTrackX] = useState(0);
+  const trackRef = useRef<View | null>(null);
 
   const clamp = (next: number) => Math.max(0, Math.min(100, Math.round(next)));
+  const safeValue = clamp(value);
 
-  const updateFromX = (x: number) => {
-    if (!width) return;
-    onChange(clamp((x / width) * 100));
+  const measureTrack = () => {
+    requestAnimationFrame(() => {
+      trackRef.current?.measureInWindow((x, _y, measuredWidth) => {
+        setTrackX(x);
+        setWidth(measuredWidth || 1);
+      });
+    });
+  };
+
+  const updateFromPageX = (pageX: number) => {
+    const measuredWidth = width || 1;
+    const next = ((pageX - trackX) / measuredWidth) * 100;
+    onChange(clamp(next));
   };
 
   const panResponder = useMemo(
@@ -272,19 +381,30 @@ function PercentSlider({
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: event => updateFromX(event.nativeEvent.locationX),
-        onPanResponderMove: event => updateFromX(event.nativeEvent.locationX),
+        onPanResponderGrant: event => {
+          measureTrack();
+          updateFromPageX(event.nativeEvent.pageX);
+        },
+        onPanResponderMove: event => {
+          updateFromPageX(event.nativeEvent.pageX);
+        },
       }),
-    [width],
+    [width, trackX],
   );
 
   const onLayout = (event: LayoutChangeEvent) => {
-    setWidth(event.nativeEvent.layout.width);
+    setWidth(event.nativeEvent.layout.width || 1);
+    measureTrack();
   };
+
+  const thumbLeft = width
+    ? Math.max(0, Math.min(width - 22, (safeValue / 100) * width - 11))
+    : 0;
 
   return (
     <View style={styles.sliderWrap}>
       <View
+        ref={trackRef}
         style={[styles.sliderTrack, { backgroundColor: theme.border }]}
         onLayout={onLayout}
         {...panResponder.panHandlers}
@@ -293,7 +413,7 @@ function PercentSlider({
           style={[
             styles.sliderFill,
             {
-              width: `${clamp(value)}%`,
+              width: `${safeValue}%`,
               backgroundColor: theme.accent,
             },
           ]}
@@ -303,9 +423,7 @@ function PercentSlider({
             styles.sliderThumb,
             {
               backgroundColor: theme.accent,
-              left: width
-                ? Math.max(0, Math.min(width - 22, (clamp(value) / 100) * width - 11))
-                : 0,
+              left: thumbLeft,
             },
           ]}
         />
@@ -353,17 +471,21 @@ export default function SettingsScreen() {
   };
 
   const updatePreferenceImmediately = (updater: (next: SettingsDraft) => void) => {
-    setDraft(current => {
-      const next = cloneDraft(current);
-      updater(next);
-      triggerHaptic(next.preferences.hapticsEnabled);
+    const next = cloneDraft(draft);
+    updater(next);
 
-      applyPreferencesImmediately(next.preferences).catch(error => {
+    setDraft(next);
+    setSettingsLocally(next);
+    triggerHaptic(next.preferences.hapticsEnabled);
+
+    applyPreferencesImmediately(next.preferences)
+      .then(saved => {
+        setDraft(saved);
+        setSettingsLocally(saved);
+      })
+      .catch(error => {
         console.log('Immediate preference save error', error);
       });
-
-      return next;
-    });
   };
 
   const pickProfilePhoto = async () => {
@@ -377,10 +499,25 @@ export default function SettingsScreen() {
         exif: false,
       });
 
-      if (!result.canceled && result.assets?.[0]?.uri) {
-        updateDraft(next => {
-          next.profile.photoUri = result.assets[0].uri;
-        });
+      const uri = !result.canceled ? result.assets?.[0]?.uri : undefined;
+
+      if (uri) {
+        const next = cloneDraft(draft);
+        next.profile.photoUri = uri;
+
+        setDraft(next);
+        setSettingsLocally(next);
+        triggerHaptic(next.preferences.hapticsEnabled);
+
+        try {
+          await saveSettings(next);
+          const saved = await refreshSettings();
+          setDraft(saved);
+          setSettingsLocally(saved);
+        } catch (saveError) {
+          console.log('Profile photo save error', saveError);
+          Alert.alert('Photo selected', 'The photo was selected but could not be saved locally.');
+        }
       }
     } catch (error) {
       console.log('Profile photo picker error', error);
@@ -446,7 +583,7 @@ export default function SettingsScreen() {
     }
   };
 
-  const displayDistance = draft.preferences.distanceUnit === 'in' ? 'in' : 'm';
+  const displayDistance = toShortDistanceUnit(draft.preferences.distanceUnit);
 
   return (
     <>
@@ -461,6 +598,7 @@ export default function SettingsScreen() {
           <TouchableOpacity
             style={[styles.saveButton, { backgroundColor: theme.accent }]}
             onPress={() => setSaveConfirmVisible(true)}
+            activeOpacity={0.86}
           >
             <Text style={styles.saveText}>{saveLabel}</Text>
           </TouchableOpacity>
@@ -473,9 +611,14 @@ export default function SettingsScreen() {
                 <TouchableOpacity
                   style={[styles.avatar, { backgroundColor: theme.surfaceSecondary }]}
                   onPress={pickProfilePhoto}
+                  activeOpacity={0.84}
                 >
-                  <Ionicons name="person" size={40} color={theme.textMuted} />
-                  <View style={[styles.avatarBadge, { backgroundColor: theme.accent }]}>
+                  {draft.profile.photoUri ? (
+                    <Image source={{ uri: draft.profile.photoUri }} style={styles.avatarImage} />
+                  ) : (
+                    <Ionicons name="person" size={40} color={theme.textMuted} />
+                  )}
+                  <View style={[styles.avatarBadge, { backgroundColor: theme.accent }]}> 
                     <Ionicons name="camera" size={13} color="#000000" />
                   </View>
                 </TouchableOpacity>
@@ -484,30 +627,30 @@ export default function SettingsScreen() {
                   <Text style={[styles.profileName, { color: theme.text }]}>
                     {draft.profile.displayName || 'Demo User'}
                   </Text>
-                  <Text style={[styles.profileGoal, { color: theme.accent }]}>
+                  <Text style={[styles.profileGoal, { color: theme.accent }]}> 
                     {draft.profile.goal} Goal
                   </Text>
-                  <Text style={[styles.profileMeta, { color: theme.textSecondary }]}>
+                  <Text style={[styles.profileMeta, { color: theme.textSecondary }]}> 
                     {draft.profile.level}
                   </Text>
-                  <Text style={[styles.profileMeta, { color: theme.textSecondary }]}>
+                  <Text style={[styles.profileMeta, { color: theme.textSecondary }]}> 
                     {draft.profile.gender} • {draft.profile.age} yrs old
                   </Text>
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.84}>
                 <Text style={[styles.logoutText, { color: theme.danger }]}>Log Out</Text>
               </TouchableOpacity>
             </>
           ) : (
             <View style={styles.signedOutCard}>
-              <View style={[styles.avatarLarge, { backgroundColor: theme.surfaceSecondary }]}>
+              <View style={[styles.avatarLarge, { backgroundColor: theme.surfaceSecondary }]}> 
                 <Ionicons name="person" size={44} color={theme.textMuted} />
               </View>
 
               <Text style={[styles.signedOutTitle, { color: theme.text }]}>No user signed in</Text>
-              <Text style={[styles.signedOutText, { color: theme.textMuted }]}>
+              <Text style={[styles.signedOutText, { color: theme.textMuted }]}> 
                 Continue locally or use a demo account for testing.
               </Text>
 
@@ -515,6 +658,7 @@ export default function SettingsScreen() {
                 <TouchableOpacity
                   style={[styles.authButton, { backgroundColor: theme.accent }]}
                   onPress={handleSignIn}
+                  activeOpacity={0.86}
                 >
                   <Text style={styles.authButtonText}>Sign In</Text>
                 </TouchableOpacity>
@@ -522,6 +666,7 @@ export default function SettingsScreen() {
                 <TouchableOpacity
                   style={[styles.authButtonSecondary, { borderColor: theme.border }]}
                   onPress={handleSignUp}
+                  activeOpacity={0.86}
                 >
                   <Text style={[styles.authButtonSecondaryText, { color: theme.text }]}>Sign Up</Text>
                 </TouchableOpacity>
@@ -590,28 +735,40 @@ export default function SettingsScreen() {
         <Section title="Body Stats" theme={theme}>
           <Row
             label="Weight"
-            value={`${draft.bodyStats.weightKg} kg`}
+            value={formatWeightForUnit(draft.bodyStats.weightKg, draft.preferences.weightUnit)}
             theme={theme}
             onPress={() =>
               setChoiceConfig({
                 title: 'Choose Weight',
-                values: range(35, 180).map(value => `${value} kg`),
-                selected: `${draft.bodyStats.weightKg} kg`,
-                onSelect: value => updateDraft(next => { next.bodyStats.weightKg = Number(value.replace(' kg', '')); }),
+                values: weightChoiceValues(draft.preferences.weightUnit),
+                selected: formatWeightForUnit(draft.bodyStats.weightKg, draft.preferences.weightUnit),
+                onSelect: value => updateDraft(next => {
+                  if (value.endsWith('lbs')) {
+                    next.bodyStats.weightKg = lbToKg(Number(value.replace(' lbs', '')));
+                  } else {
+                    next.bodyStats.weightKg = Number(value.replace(' kg', ''));
+                  }
+                }),
               })
             }
           />
 
           <Row
             label="Height"
-            value={`${draft.bodyStats.heightCm} cm`}
+            value={formatHeightForUnit(draft.bodyStats.heightCm, draft.preferences.distanceUnit)}
             theme={theme}
             onPress={() =>
               setChoiceConfig({
                 title: 'Choose Height',
-                values: range(130, 220).map(value => `${value} cm`),
-                selected: `${draft.bodyStats.heightCm} cm`,
-                onSelect: value => updateDraft(next => { next.bodyStats.heightCm = Number(value.replace(' cm', '')); }),
+                values: heightChoiceValues(draft.preferences.distanceUnit),
+                selected: formatHeightForUnit(draft.bodyStats.heightCm, draft.preferences.distanceUnit),
+                onSelect: value => updateDraft(next => {
+                  if (value.endsWith('in')) {
+                    next.bodyStats.heightCm = inchesToCm(Number(value.replace(' in', '')));
+                  } else {
+                    next.bodyStats.heightCm = metersToCm(Number(value.replace(' m', '')));
+                  }
+                }),
               })
             }
           />
@@ -625,7 +782,9 @@ export default function SettingsScreen() {
                 title: 'Choose Body Fat',
                 values: range(5, 50).map(value => `${value}%`),
                 selected: `${draft.bodyStats.bodyFatPercent}%`,
-                onSelect: value => updateDraft(next => { next.bodyStats.bodyFatPercent = Number(value.replace('%', '')); }),
+                onSelect: value => updateDraft(next => {
+                  next.bodyStats.bodyFatPercent = Number(value.replace('%', ''));
+                }),
               })
             }
           />
@@ -710,35 +869,39 @@ export default function SettingsScreen() {
             ['Working Set Rest', 'workingRestSeconds'],
             ['Drop Set Rest', 'dropRestSeconds'],
             ['Failure Set Rest', 'failureRestSeconds'],
-          ].map(([label, key], index, list) => (
-            <Row
-              key={key}
-              label={label}
-              value={formatRestTime(draft.workoutDefaults[key as keyof SettingsDraft['workoutDefaults']])}
-              theme={theme}
-              noBorder={index === list.length - 1}
-              onPress={() =>
-                setChoiceConfig({
-                  title: label,
-                  values: REST_OPTIONS.map(seconds => formatRestTime(seconds)),
-                  selected: formatRestTime(draft.workoutDefaults[key as keyof SettingsDraft['workoutDefaults']]),
-                  onSelect: value => {
-                    const [minutes, seconds] = value.split(':').map(Number);
-                    updateDraft(next => {
-                      next.workoutDefaults[key as keyof SettingsDraft['workoutDefaults']] =
-                        minutes * 60 + seconds;
-                    });
-                  },
-                })
-              }
-            />
-          ))}
+          ].map(([label, key], index, list) => {
+            const typedKey = key as keyof SettingsDraft['workoutDefaults'];
+            const currentValue = draft.workoutDefaults[typedKey];
+
+            return (
+              <Row
+                key={key}
+                label={label}
+                value={formatRestTime(currentValue)}
+                theme={theme}
+                noBorder={index === list.length - 1}
+                onPress={() =>
+                  setChoiceConfig({
+                    title: label,
+                    values: REST_OPTIONS.map(seconds => formatRestTime(seconds)),
+                    selected: formatRestTime(currentValue),
+                    onSelect: value => {
+                      const [minutes, seconds] = value.split(':').map(Number);
+                      updateDraft(next => {
+                        next.workoutDefaults[typedKey] = minutes * 60 + seconds;
+                      });
+                    },
+                  })
+                }
+              />
+            );
+          })}
         </Section>
 
         <Section title="AI Configuration" theme={theme}>
           <View style={styles.aiHeaderRow}>
             <Text style={[styles.sliderLabel, { color: theme.text }]}>Model Confidence Threshold</Text>
-            <Text style={[styles.aiValue, { backgroundColor: theme.accent }]}>
+            <Text style={[styles.aiValue, { backgroundColor: theme.accent }]}> 
               {draft.ai.confidenceThreshold}%
             </Text>
           </View>
@@ -754,6 +917,7 @@ export default function SettingsScreen() {
           <TouchableOpacity
             style={[styles.deleteButton, { borderColor: theme.danger }]}
             onPress={() => setDeleteConfirmVisible(true)}
+            activeOpacity={0.86}
           >
             <Text style={[styles.deleteText, { color: theme.danger }]}>DELETE ALL LOCAL DATA</Text>
           </TouchableOpacity>
@@ -766,9 +930,9 @@ export default function SettingsScreen() {
 
       <Modal transparent visible={saveConfirmVisible} animationType="fade">
         <Pressable style={styles.confirmOverlay} onPress={() => setSaveConfirmVisible(false)}>
-          <Pressable style={[styles.confirmCard, { backgroundColor: theme.surface }]}>
+          <Pressable style={[styles.confirmCard, { backgroundColor: theme.surface }]}> 
             <Text style={[styles.confirmTitle, { color: theme.text }]}>Save settings?</Text>
-            <Text style={[styles.confirmMessage, { color: theme.textMuted }]}>
+            <Text style={[styles.confirmMessage, { color: theme.textMuted }]}> 
               This will save your profile, body stats, workout defaults, and AI configuration locally.
             </Text>
 
@@ -776,6 +940,7 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 style={[styles.confirmButtonSecondary, { borderColor: theme.border }]}
                 onPress={() => setSaveConfirmVisible(false)}
+                activeOpacity={0.86}
               >
                 <Text style={[styles.confirmButtonSecondaryText, { color: theme.text }]}>Cancel</Text>
               </TouchableOpacity>
@@ -783,6 +948,7 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 style={[styles.confirmButtonPrimary, { backgroundColor: theme.accent }]}
                 onPress={confirmSave}
+                activeOpacity={0.86}
               >
                 <Text style={styles.confirmButtonPrimaryText}>Save</Text>
               </TouchableOpacity>
@@ -793,15 +959,16 @@ export default function SettingsScreen() {
 
       <Modal transparent visible={deleteConfirmVisible} animationType="fade">
         <Pressable style={styles.confirmOverlay} onPress={() => setDeleteConfirmVisible(false)}>
-          <Pressable style={[styles.confirmCard, { backgroundColor: theme.surface }]}>
+          <Pressable style={[styles.confirmCard, { backgroundColor: theme.surface }]}> 
             <Text style={[styles.confirmTitle, { color: theme.text }]}>Delete local data?</Text>
-            <Text style={[styles.confirmMessage, { color: theme.textMuted }]}>
+            <Text style={[styles.confirmMessage, { color: theme.textMuted }]}> 
               This action is not fully connected yet. Keep this option disabled until the database reset service is finalized.
             </Text>
 
             <TouchableOpacity
               style={[styles.confirmButtonSecondary, { borderColor: theme.border, marginTop: 16 }]}
               onPress={() => setDeleteConfirmVisible(false)}
+              activeOpacity={0.86}
             >
               <Text style={[styles.confirmButtonSecondaryText, { color: theme.text }]}>Close</Text>
             </TouchableOpacity>
@@ -819,7 +986,7 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 70,
     paddingHorizontal: 18,
-    paddingBottom: 94,
+    paddingBottom: 6,
   },
   header: {
     flexDirection: 'row',
@@ -875,11 +1042,11 @@ const styles = StyleSheet.create({
     maxWidth: '52%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
   },
   rowValue: {
     fontSize: 14,
     fontWeight: '800',
+    marginRight: 4,
   },
   toggleWrap: {
     width: 116,
@@ -910,6 +1077,12 @@ const styles = StyleSheet.create({
     marginRight: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 38,
   },
   avatarBadge: {
     position: 'absolute',
@@ -972,7 +1145,6 @@ const styles = StyleSheet.create({
   },
   authRow: {
     flexDirection: 'row',
-    gap: 10,
     marginTop: 16,
     marginBottom: 4,
   },
@@ -982,6 +1154,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 5,
   },
   authButtonText: {
     color: '#000000',
@@ -995,6 +1168,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 5,
   },
   authButtonSecondaryText: {
     fontSize: 14,
@@ -1124,7 +1298,6 @@ const styles = StyleSheet.create({
   },
   confirmActions: {
     flexDirection: 'row',
-    gap: 10,
     marginTop: 18,
   },
   confirmButtonSecondary: {
@@ -1134,6 +1307,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 5,
   },
   confirmButtonSecondaryText: {
     fontSize: 14,
@@ -1145,6 +1319,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 5,
   },
   confirmButtonPrimaryText: {
     color: '#000000',
