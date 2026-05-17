@@ -11,7 +11,7 @@ import {
 import {
   normalisePose,
   type Landmark3D,
-} from '../../../ml/preprocessing/normalizePose';
+} from '../../../../ml/preprocessing/normalizePose';
 
 import { TemporalBuffer, WINDOW_SIZE } from '../utils/temporalBuffer';
 import { STGCNRunner, type ExerciseClass } from '../inference/STGCNRunner';

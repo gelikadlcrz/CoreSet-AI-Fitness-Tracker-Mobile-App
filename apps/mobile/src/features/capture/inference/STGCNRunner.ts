@@ -67,7 +67,7 @@ export class STGCNRunner {
     }
 
     const asset = Asset.fromModule(
-      require('../../../ml/models/stgcn_int8.tflite')
+      require('../../../../ml/models/stgcn_int8.tflite')
     );
 
     await asset.downloadAsync();

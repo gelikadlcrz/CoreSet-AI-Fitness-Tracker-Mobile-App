@@ -15,12 +15,12 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.coreset.app",
+      "bundleIdentifier": "com.404.coreset",
       "infoPlist": {
         "NSCameraUsageDescription": "CoreSet uses the camera to analyse your exercise form and count repetitions on-device. No video is stored or transmitted.",
         "NSMicrophoneUsageDescription": "Microphone access is not used.",
-        "NSPhotoLibraryUsageDescription": "CoreSet uses your photo library so you can choose a profile picture.",
-        "NSPhotoLibraryAddUsageDescription": "CoreSet may save edited profile images to your photo library if you choose to export them."
+        "NSPhotoLibraryUsageDescription": "CoreSet lets you choose a profile photo from your photo library.",
+        "NSPhotoLibraryAddUsageDescription": "CoreSet may save edited profile images to your photo library when requested."
       }
     },
     "android": {
@@ -37,6 +37,7 @@
     "plugins": [
       "expo-router",
       "./plugins/withSimdjson",
+      "./plugins/withMediapipeModel",
       [
         "expo-splash-screen",
         {
@@ -56,15 +57,6 @@
         "react-native-fast-tflite",
         {
           "enableCoreMLDelegate": true
-        }
-      ],
-      "expo-font",
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "CoreSet uses your photo library so you can choose a profile picture.",
-          "cameraPermission": "CoreSet uses your camera so you can take a profile picture.",
-          "microphonePermission": false
         }
       ]
     ],
