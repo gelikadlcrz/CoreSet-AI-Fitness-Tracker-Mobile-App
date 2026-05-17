@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import {
   Alert,
@@ -17,8 +17,6 @@ import {
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-
 import { COLORS } from '../../shared/theme';
 import DeleteConfirmationModal from '../../src/features/settings/components/DeleteConfirmationModal';
 
@@ -518,7 +516,7 @@ function PercentSlider({
   );
 }
 
-export default function SettingsScreen() {
+function SettingsContent() {
   const [draft, setDraft] = useState<SettingsDraft>(DEFAULT_SETTINGS);
   const [choiceConfig, setChoiceConfig] = useState<ChoiceConfig | null>(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -574,23 +572,30 @@ export default function SettingsScreen() {
 
   const pickProfilePhoto = async () => {
     try {
+      // Load ImagePicker only when the user taps the avatar. This prevents the
+      // whole Settings tab from crashing when the native module is not present
+      // in an older development build.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const ImagePicker = require('expo-image-picker');
+
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ImagePicker.MediaTypeOptions?.Images ?? 'images',
         allowsEditing: false,
         quality: 0.75,
         exif: false,
       });
 
       if (!result.canceled && result.assets?.[0]?.uri) {
+        const selectedUri = result.assets[0].uri;
         updateDraft(next => {
-          next.profile.photoUri = result.assets[0].uri;
+          next.profile.photoUri = selectedUri;
         });
       }
     } catch (error) {
       console.log('Profile photo picker error', error);
       Alert.alert(
         'Photo picker unavailable',
-        'CoreSet could not open the photo picker. Please close and reopen the app, then try again.',
+        'CoreSet could not open the photo picker. Rebuild the development app after installing expo-image-picker, then try again.',
       );
     }
   };
@@ -961,9 +966,67 @@ export default function SettingsScreen() {
   );
 }
 
+class SettingsErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { errorMessage: string | null }
+> {
+  state = { errorMessage: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { errorMessage: error?.message || 'Settings failed to load.' };
+  }
+
+  componentDidCatch(error: Error) {
+    console.log('Settings screen render error', error);
+  }
+
+  render() {
+    if (this.state.errorMessage) {
+      return (
+        <View style={styles.errorRoot}>
+          <Ionicons name="warning-outline" size={42} color={COLORS.danger} />
+          <Text style={styles.errorTitle}>Settings could not open</Text>
+          <Text style={styles.errorMessage}>{this.state.errorMessage}</Text>
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+export default function SettingsScreen() {
+  return (
+    <SettingsErrorBoundary>
+      <SettingsContent />
+    </SettingsErrorBoundary>
+  );
+}
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  errorRoot: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  errorTitle: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 14,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    color: COLORS.textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   content: {
     paddingTop: 70,
